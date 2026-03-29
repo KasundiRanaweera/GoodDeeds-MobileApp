@@ -1,60 +1,72 @@
-# Firebase Storage Security Rules
+# Firebase Security Rules (Storage + Firestore)
 
-If images are not uploading (showing a spinning circle), your Firebase Storage Rules might be too restrictive.
+Use both rules below. Storage rules alone are not enough for role-based login.
 
-## Solution Steps:
+## 1) Firebase Storage Rules
 
-1. Go to [Firebase Console](https://console.firebase.google.com/)
-2. Select your project: **gooddeeds-app-4303c**
-3. Go to **Storage** section
-4. Click on **Rules** tab
-5. Replace the current rules with:
-```
+Go to [Firebase Console](https://console.firebase.google.com/) -> your project -> **Storage** -> **Rules**, then paste:
+
+```rules
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    // Allow authenticated users to upload to events folder
+    // Event images upload path used by this app
     match /events/{userId}/{allPaths=**} {
-      allow read, write: if request.auth != null;
-    }
-    
-    // Allow anyone to read event images
-    match /events/{allPaths=**} {
-      allow read;
+      allow write: if request.auth != null && request.auth.uid == userId;
+      allow read: if true;
     }
   }
 }
 ```
 
-6. Click **Publish** button
-7. Wait 1-2 minutes for rules to deploy
-8. Try uploading an image again in the app
+## 2) Firestore Rules
 
-## What These Rules Allow:
+Go to your project -> **Firestore Database** -> **Rules**, then paste:
 
-✅ **Authenticated users** can upload images to their own event folders
-✅ **Anyone** can view the uploaded images (needed for download URLs)
-✅ **Prevents** unauthorized uploads or malicious access
+```rules
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
 
-## If Upload Still Doesn't Work:
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
 
-Check the **Console Output** (in VS Code terminal running `flutter run`) for error messages like:
-- `Permission denied` - Update the rules above
-- `User not authenticated` - Make sure user is signed in
-- `Upload timeout` - Check network connection or Firebase project status
-- `No image data available` - Make sure you selected an image
+    // Needed for role-based login (reads users/{uid})
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId);
+      allow delete: if false;
+    }
 
-The enhanced logging will show:
+    // Needed for event create/read/update flow
+    match /events/{eventId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn()
+        && resource.data.createdByUid == request.auth.uid;
+    }
+  }
+}
 ```
-=== Starting image upload ===
-User UID: [uid]
-File path: events/[uid]/[timestamp].jpg
-Web upload: bytes size = [size]
-Waiting for upload to complete...
-Upload progress: 0%
-Upload progress: 50%
-Upload progress: 100%
-Upload complete, getting download URL...
-Image uploaded successfully: https://firestore.googleapis.com/...
-=== Upload finished successfully ===
-```
+
+## 3) After Publishing Rules
+
+1. Click **Publish** for Storage rules.
+2. Click **Publish** for Firestore rules.
+3. Wait 1-2 minutes.
+4. Sign out and sign in again.
+5. Test organizer login and event image upload.
+
+## Quick Troubleshooting
+
+- `cloud_firestore/permission-denied` after login:
+  Firestore `users/{uid}` read is blocked.
+- Upload spinner never ends:
+  Storage write permissions or network issue.
+- `User not authenticated`:
+  Session expired; sign in again.

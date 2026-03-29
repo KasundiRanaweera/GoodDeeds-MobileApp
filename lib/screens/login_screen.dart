@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'home_screen.dart';
 import 'register_screen.dart';
 import 'user/discover_events_screen.dart';
 import 'organizer/organizer_dashboard_screen.dart';
@@ -124,8 +123,79 @@ class _LoginScreenState extends State<LoginScreen> {
 
   String _normalizedRole(String? role) {
     final value = role?.trim().toLowerCase() ?? '';
-    if (value == 'user') return 'volunteer';
+    if (value.isEmpty) return '';
+
+    if (value == 'organizer' || value == 'org') return 'organizer';
+    if (value.contains('organizer')) return 'organizer';
+    if (value.contains('admin')) return 'organizer';
+
+    if (value == 'volunteer' || value == 'user') return 'volunteer';
+    if (value.contains('volunteer')) return 'volunteer';
+
     return value;
+  }
+
+  String _roleFromUserData(Map<String, dynamic>? userData) {
+    if (userData == null) return '';
+
+    final directRole = _normalizedRole(userData['role']?.toString());
+    if (directRole == 'organizer' || directRole == 'volunteer') {
+      return directRole;
+    }
+
+    final userType = _normalizedRole(userData['userType']?.toString());
+    if (userType == 'organizer' || userType == 'volunteer') {
+      return userType;
+    }
+
+    final roles = userData['roles'];
+    if (roles is List) {
+      for (final rawRole in roles) {
+        final role = _normalizedRole(rawRole?.toString());
+        if (role == 'organizer') return 'organizer';
+      }
+      for (final rawRole in roles) {
+        final role = _normalizedRole(rawRole?.toString());
+        if (role == 'volunteer') return 'volunteer';
+      }
+    }
+
+    return '';
+  }
+
+  Future<String> _resolveRoleForCurrentUser() async {
+    final user = _firebaseService.currentUser;
+    if (user == null) return '';
+
+    // Retry a few times in case profile document is slightly delayed.
+    for (var attempt = 0; attempt < 3; attempt++) {
+      final userData = await _firebaseService.getUserData(user.uid);
+      final role = _roleFromUserData(userData);
+      if (role == 'organizer' || role == 'volunteer') {
+        return role;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    }
+
+    return '';
+  }
+
+  void _navigateForRole(NavigatorState navigator, String role) {
+    if (role == 'organizer') {
+      navigator.pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const OrganizerDashboardScreen()),
+        (route) => false,
+      );
+      return;
+    }
+
+    if (role == 'volunteer') {
+      navigator.pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const DiscoverEventsScreen()),
+        (route) => false,
+      );
+      return;
+    }
   }
 
   @override
@@ -279,53 +349,30 @@ class _LoginScreenState extends State<LoginScreen> {
 
                                         String role = '';
                                         try {
-                                          final user =
-                                              _firebaseService.currentUser;
-                                          if (user != null) {
-                                            final userData =
-                                                await _firebaseService
-                                                    .getUserData(user.uid);
-                                            role = _normalizedRole(
-                                              userData?['role'] as String?,
-                                            );
-                                          }
+                                          role =
+                                              await _resolveRoleForCurrentUser();
                                         } catch (e, st) {
-                                          // Authentication already succeeded.
-                                          // If user profile read is blocked (e.g. Firestore rules),
-                                          // allow login to continue with a safe fallback route.
                                           debugPrint(
                                             'Login role lookup failed: $e\n$st',
                                           );
                                         }
 
+                                        if (!mounted) return;
                                         await _showLoginSuccessAlert();
                                         if (!mounted) return;
 
-                                        if (role == 'volunteer') {
-                                          navigator.pushAndRemoveUntil(
-                                            MaterialPageRoute(
-                                              builder: (_) =>
-                                                  const DiscoverEventsScreen(),
-                                            ),
-                                            (route) => false,
+                                        debugPrint(
+                                          'Login routing role resolved as: $role',
+                                        );
+
+                                        if (role.isEmpty) {
+                                          await _showSignInAlert(
+                                            'Login succeeded, but your role is missing in your profile. Please contact support or sign in again after profile setup.',
                                           );
-                                        } else if (role == 'organizer') {
-                                          navigator.pushAndRemoveUntil(
-                                            MaterialPageRoute(
-                                              builder: (_) =>
-                                                  const OrganizerDashboardScreen(),
-                                            ),
-                                            (route) => false,
-                                          );
-                                        } else {
-                                          navigator.pushAndRemoveUntil(
-                                            MaterialPageRoute(
-                                              builder: (_) =>
-                                                  const HomeScreen(),
-                                            ),
-                                            (route) => false,
-                                          );
+                                          return;
                                         }
+
+                                        _navigateForRole(navigator, role);
                                       } on FirebaseAuthException catch (e) {
                                         if (!mounted) return;
                                         await _showSignInAlert(

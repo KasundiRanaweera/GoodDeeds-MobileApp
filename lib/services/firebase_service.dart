@@ -93,6 +93,20 @@ class FirebaseService {
     }
   }
 
+  // Update role for the currently signed-in user.
+  Future<void> updateCurrentUserRole(String role) async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw Exception('No signed-in user.');
+    }
+
+    final normalizedRole = _normalizeRole(role);
+    await _firestore.collection('users').doc(user.uid).set({
+      'role': normalizedRole,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
   // Stream organizer-created events for volunteer discovery.
   Stream<List<Map<String, dynamic>>> streamOrganizerEvents() {
     return _firestore.collection('events').snapshots().map((snapshot) {
@@ -166,8 +180,9 @@ class FirebaseService {
 
       final data = snapshot.data() ?? <String, dynamic>{};
       final participantIds = List<String>.from(
-        (data['participantIds'] as List<dynamic>? ?? const [])
-            .map((e) => e.toString()),
+        (data['participantIds'] as List<dynamic>? ?? const []).map(
+          (e) => e.toString(),
+        ),
       );
 
       if (!participantIds.contains(user.uid)) {
