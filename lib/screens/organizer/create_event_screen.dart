@@ -1,8 +1,15 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/material.dart';
+import 'dart:io';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+
+import '../../constants/event_categories.dart';
 import '../../services/firebase_service.dart';
 import 'organizer_dashboard_screen.dart';
+import 'organizer_profile_screen.dart';
 
 const _kPrimaryColor = Color(0xFF0DF233);
 const _kBackgroundLight = Color(0xFFF8F6F6);
@@ -18,6 +25,7 @@ class CreateEventScreen extends StatefulWidget {
 class _CreateEventScreenState extends State<CreateEventScreen> {
   final FirebaseService _firebaseService = FirebaseService();
   final _formKey = GlobalKey<FormState>();
+  final ImagePicker _imagePicker = ImagePicker();
 
   final TextEditingController _organizerNameController =
       TextEditingController();
@@ -25,25 +33,24 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   final TextEditingController _descriptionController = TextEditingController();
   final TextEditingController _locationController = TextEditingController();
   final TextEditingController _pointsController = TextEditingController();
-  final TextEditingController _bannerUrlController = TextEditingController();
+  final TextEditingController _contactNumberController =
+      TextEditingController();
 
-  final List<String> _categories = const [
-    'Technology',
-    'Education',
-    'Networking',
-    'Workshop',
-  ];
+  late final List<String> _categories = kOrganizerEventCategories;
 
-  String _selectedCategory = 'Technology';
+  late String _selectedCategory = kOrganizerEventCategories[0];
   DateTime? _selectedDateTime;
   bool _isSubmitting = false;
+  File? _selectedImage;
+  Uint8List? _selectedImageBytes;
+  bool _isUploadingImage = false;
 
   @override
   void initState() {
     super.initState();
     final displayName = _firebaseService.currentUser?.displayName?.trim() ?? '';
     _organizerNameController.text = displayName;
-    _pointsController.text = '10';
+    _pointsController.text = '50';
   }
 
   @override
@@ -53,7 +60,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     _descriptionController.dispose();
     _locationController.dispose();
     _pointsController.dispose();
-    _bannerUrlController.dispose();
+    _contactNumberController.dispose();
     super.dispose();
   }
 
@@ -86,42 +93,188 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     });
   }
 
-  Future<void> _promptBannerUrl() async {
-    final controller = TextEditingController(text: _bannerUrlController.text);
-    final result = await showDialog<String>(
+  Future<void> _selectImage() async {
+    await showModalBottomSheet<void>(
       context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Event Banner URL'),
-          content: TextField(
-            controller: controller,
-            decoration: const InputDecoration(
-              hintText: 'https://example.com/banner.jpg',
-              labelText: 'Image URL',
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(controller.text),
-              style: FilledButton.styleFrom(
-                backgroundColor: _kPrimaryColor,
-                foregroundColor: Colors.black,
+      builder: (sheetContext) {
+        return Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Select Image Source',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
               ),
-              child: const Text('Use URL'),
-            ),
-          ],
+              const SizedBox(height: 16),
+              ListTile(
+                leading: const Icon(Icons.photo_library, color: _kPrimaryColor),
+                title: const Text('Gallery'),
+                onTap: () async {
+                  Navigator.pop(sheetContext);
+                  final image = await _imagePicker.pickImage(
+                    source: ImageSource.gallery,
+                  );
+                  if (image != null && mounted) {
+                    if (kIsWeb) {
+                      final bytes = await image.readAsBytes();
+                      if (!mounted) return;
+                      setState(() {
+                        _selectedImageBytes = bytes;
+                        _selectedImage = null;
+                      });
+                    } else {
+                      setState(() {
+                        _selectedImage = File(image.path);
+                        _selectedImageBytes = null;
+                      });
+                    }
+                  }
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.camera_alt, color: _kPrimaryColor),
+                title: const Text('Camera'),
+                onTap: () async {
+                  Navigator.pop(sheetContext);
+                  final image = await _imagePicker.pickImage(
+                    source: ImageSource.camera,
+                  );
+                  if (image != null && mounted) {
+                    if (kIsWeb) {
+                      final bytes = await image.readAsBytes();
+                      if (!mounted) return;
+                      setState(() {
+                        _selectedImageBytes = bytes;
+                        _selectedImage = null;
+                      });
+                    } else {
+                      setState(() {
+                        _selectedImage = File(image.path);
+                        _selectedImageBytes = null;
+                      });
+                    }
+                  }
+                },
+              ),
+            ],
+          ),
         );
       },
     );
+  }
 
-    if (result != null) {
-      setState(() {
-        _bannerUrlController.text = result.trim();
-      });
+  Future<String?> _uploadSelectedImageToStorage() async {
+    try {
+      setState(() => _isUploadingImage = true);
+
+      final user = _firebaseService.currentUser;
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+
+      final fileName =
+          'events/${user.uid}/${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final ref = FirebaseStorage.instance.ref().child(fileName);
+
+      debugPrint('=== Starting image upload ===');
+      debugPrint('User UID: ${user.uid}');
+      debugPrint('File path: $fileName');
+
+      final UploadTask uploadTask;
+
+      if (kIsWeb) {
+        final bytes = _selectedImageBytes;
+        if (bytes == null || bytes.isEmpty) {
+          throw Exception('No image data available for upload on web');
+        }
+        debugPrint('Web upload: bytes size = ${bytes.length}');
+        uploadTask = ref.putData(
+          bytes,
+          SettableMetadata(
+            contentType: 'image/jpeg',
+            customMetadata: {
+              'uploadedBy': user.uid,
+              'uploadedAt': DateTime.now().toIso8601String(),
+            },
+          ),
+        );
+      } else {
+        final imageFile = _selectedImage;
+        if (imageFile == null || !imageFile.existsSync()) {
+          throw Exception('Image file not found or invalid');
+        }
+        final fileSize = imageFile.lengthSync();
+        debugPrint('Mobile upload: file size = $fileSize');
+        uploadTask = ref.putFile(
+          imageFile,
+          SettableMetadata(
+            customMetadata: {
+              'uploadedBy': user.uid,
+              'uploadedAt': DateTime.now().toIso8601String(),
+            },
+          ),
+        );
+      }
+
+      // Monitor upload progress
+      uploadTask.snapshotEvents.listen(
+        (TaskSnapshot snapshot) {
+          if (mounted) {
+            final totalBytes = snapshot.totalBytes;
+            if (totalBytes <= 0) {
+              debugPrint(
+                'Upload progress: waiting for total bytes... state=${snapshot.state}',
+              );
+              return;
+            }
+            final progress = (snapshot.bytesTransferred / totalBytes * 100)
+                .toInt();
+            debugPrint('Upload progress: $progress%');
+          }
+        },
+        onError: (Object e) {
+          debugPrint('Upload stream error: $e');
+        },
+      );
+
+      // Wait for upload with timeout
+      debugPrint('Waiting for upload to complete...');
+      await uploadTask.timeout(
+        const Duration(seconds: 60),
+        onTimeout: () {
+          throw Exception('Upload timeout - took longer than 60 seconds');
+        },
+      );
+
+      debugPrint('Upload complete, getting download URL...');
+
+      // Get and verify download URL
+      final downloadUrl = await ref.getDownloadURL();
+      if (downloadUrl.isEmpty) {
+        throw Exception('Failed to get download URL for uploaded image');
+      }
+
+      debugPrint('Image uploaded successfully: $downloadUrl');
+      debugPrint('=== Upload finished successfully ===');
+      return downloadUrl;
+    } catch (e, st) {
+      debugPrint('=== Image upload error ===');
+      debugPrint('Error: $e');
+      debugPrint('Stack trace: $st');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to upload image: $e'),
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+      return null;
+    } finally {
+      if (mounted) {
+        setState(() => _isUploadingImage = false);
+      }
     }
   }
 
@@ -160,6 +313,12 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       );
       return;
     }
+    if (_selectedImage == null && _selectedImageBytes == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select an event image.')),
+      );
+      return;
+    }
 
     final user = _firebaseService.currentUser;
     if (user == null) {
@@ -172,25 +331,69 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     setState(() => _isSubmitting = true);
     try {
       final points = int.tryParse(_pointsController.text.trim()) ?? 0;
+      if (points < 50 || points > 200) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Reward points must be between 50 and 200.'),
+          ),
+        );
+        return;
+      }
+
+      // Upload image and get download URL
+      final imageUrl = await _uploadSelectedImageToStorage();
+      if (imageUrl == null || !mounted) return;
+
+      // Validate all required fields
+      final title = _eventTitleController.text.trim();
+      final description = _descriptionController.text.trim();
+      final location = _locationController.text.trim();
+      final contactNumber = _contactNumberController.text.trim();
+      final organizerName = _organizerNameController.text.trim();
+
+      if (title.isEmpty ||
+          description.isEmpty ||
+          location.isEmpty ||
+          organizerName.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please fill in all required fields.')),
+        );
+        return;
+      }
+
+      // Create event data with all required and optional fields
       final data = <String, dynamic>{
-        'title': _eventTitleController.text.trim(),
-        'description': _descriptionController.text.trim(),
-        'location': _locationController.text.trim(),
+        // Required fields
+        'title': title,
+        'description': description,
+        'location': location,
+        'contactNumber': contactNumber,
         'category': _selectedCategory,
         'impactPoints': points,
         'eventDate': Timestamp.fromDate(_selectedDateTime!),
-        'imageUrl': _bannerUrlController.text.trim(),
-        'organizerName': _organizerNameController.text.trim(),
+        'imageUrl': imageUrl,
+        'organizerName': organizerName,
         'createdByUid': user.uid,
-        'createdByName': _organizerNameController.text.trim(),
+        'createdByName': organizerName,
+        // Participant tracking
         'participantsCount': 0,
         'participantIds': <String>[],
+        'checkedInIds': <String>[],
+        'awardedParticipantIds': <String>[],
+        // Status and timestamps
         'status': 'active',
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       };
 
-      await FirebaseFirestore.instance.collection('events').add(data);
+      // Store in Firestore with error handling
+      final docRef = await FirebaseFirestore.instance
+          .collection('events')
+          .add(data);
+
+      debugPrint('Event created successfully with ID: ${docRef.id}');
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -218,13 +421,22 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     return Scaffold(
       backgroundColor: isDark ? _kBackgroundDark : _kBackgroundLight,
       appBar: AppBar(
-        title: const Text(
-          'Create Event',
-          style: TextStyle(fontWeight: FontWeight.w800),
-        ),
         centerTitle: true,
         elevation: 0,
-        backgroundColor: isDark ? _kBackgroundDark : _kBackgroundLight,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.transparent,
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Icon(Icons.add_circle, color: _kPrimaryColor),
+            SizedBox(width: 8),
+            Text('Create Event', style: TextStyle(fontWeight: FontWeight.w800)),
+          ],
+        ),
+        backgroundColor: isDark
+            ? _kBackgroundDark.withValues(alpha: 0.84)
+            : Colors.white.withValues(alpha: 0.86),
         foregroundColor: isDark ? Colors.white : Colors.black,
       ),
       body: SafeArea(
@@ -239,7 +451,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               ),
               const SizedBox(height: 8),
               InkWell(
-                onTap: _promptBannerUrl,
+                onTap: _isUploadingImage ? null : _selectImage,
                 borderRadius: BorderRadius.circular(14),
                 child: Container(
                   height: 190,
@@ -251,16 +463,32 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                     ),
                     color: _kPrimaryColor.withValues(alpha: 0.06),
                   ),
-                  child: _bannerUrlController.text.trim().isNotEmpty
-                      ? ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Image.network(
-                            _bannerUrlController.text.trim(),
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, error, stackTrace) {
-                              return _bannerPlaceholder(isDark);
-                            },
-                          ),
+                  child: (_selectedImage != null || _selectedImageBytes != null)
+                      ? Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: _selectedImageBytes != null
+                                  ? Image.memory(
+                                      _selectedImageBytes!,
+                                      fit: BoxFit.cover,
+                                    )
+                                  : Image.file(
+                                      _selectedImage!,
+                                      fit: BoxFit.cover,
+                                    ),
+                            ),
+                            if (_isUploadingImage)
+                              Container(
+                                color: Colors.black.withValues(alpha: 0.3),
+                                child: const Center(
+                                  child: CircularProgressIndicator(
+                                    color: _kPrimaryColor,
+                                  ),
+                                ),
+                              ),
+                          ],
                         )
                       : _bannerPlaceholder(isDark),
                 ),
@@ -353,7 +581,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                         _label('Points Reward'),
                         _field(
                           controller: _pointsController,
-                          hintText: '0',
+                          hintText: '50 - 200',
                           keyboardType: TextInputType.number,
                           suffixIcon: const Icon(
                             Icons.stars,
@@ -361,8 +589,11 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                           ),
                           validator: (value) {
                             final points = int.tryParse((value ?? '').trim());
-                            if (points == null || points < 0) {
-                              return 'Invalid';
+                            if (points == null) {
+                              return 'Required';
+                            }
+                            if (points < 50 || points > 200) {
+                              return 'Use 50-200';
                             }
                             return null;
                           },
@@ -381,6 +612,20 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                 validator: (value) {
                   if ((value ?? '').trim().isEmpty) {
                     return 'Location is required';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              _label('Contact Number'),
+              _field(
+                controller: _contactNumberController,
+                hintText: 'e.g. 071 234 5678',
+                keyboardType: TextInputType.phone,
+                suffixIcon: const Icon(Icons.phone, color: _kPrimaryColor),
+                validator: (value) {
+                  if ((value ?? '').trim().isEmpty) {
+                    return 'Contact number is required';
                   }
                   return null;
                 },
@@ -471,7 +716,16 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                 builder: (_) => const OrganizerDashboardScreen(),
               ),
             );
+            return;
           }
+
+          if (index == 1) {
+            return;
+          }
+
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const OrganizerProfileScreen()),
+          );
         },
         type: BottomNavigationBarType.fixed,
         selectedItemColor: _kPrimaryColor,
@@ -483,8 +737,9 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Dashboard'),
           BottomNavigationBarItem(
             icon: Icon(Icons.add_circle),
-            label: 'Create',
+            label: 'Create Event',
           ),
+          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
         ],
       ),
     );

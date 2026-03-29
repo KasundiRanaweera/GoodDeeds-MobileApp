@@ -1,5 +1,9 @@
+import 'dart:io';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../services/firebase_service.dart';
 
@@ -20,12 +24,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final _phoneController = TextEditingController();
   final _addressController = TextEditingController();
   final _bioController = TextEditingController();
-  final _photoUrlController = TextEditingController();
+  final ImagePicker _imagePicker = ImagePicker();
 
   final FirebaseService _firebaseService = FirebaseService();
 
   bool _isLoading = true;
   bool _isSaving = false;
+  File? _selectedImage;
+  bool _isUploadingImage = false;
+  late String _currentPhotoUrl;
 
   String _asString(dynamic value, {String fallback = ''}) {
     if (value == null) return fallback;
@@ -59,9 +66,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       _phoneController.text = _asString(data?['phone']);
       _addressController.text = _asString(data?['address']);
       _bioController.text = _asString(data?['bio']);
-      _photoUrlController.text = _asString(
-        data?['photoUrl'] ?? data?['avatarUrl'],
-      );
+      _currentPhotoUrl = _asString(data?['photoUrl'] ?? data?['avatarUrl']);
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -75,42 +80,91 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
-  Future<void> _promptPhotoUrl() async {
-    final controller = TextEditingController(text: _photoUrlController.text);
-    final result = await showDialog<String>(
+  Future<void> _selectPhoto() async {
+    await showModalBottomSheet<void>(
       context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Upload Photo'),
-          content: TextField(
-            controller: controller,
-            decoration: const InputDecoration(
-              labelText: 'Photo URL',
-              hintText: 'https://example.com/photo.jpg',
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(controller.text),
-              style: FilledButton.styleFrom(
-                backgroundColor: _kPrimaryColor,
-                foregroundColor: Colors.black,
+      builder: (sheetContext) {
+        return Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Select Photo Source',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
               ),
-              child: const Text('Use URL'),
-            ),
-          ],
+              const SizedBox(height: 16),
+              ListTile(
+                leading: const Icon(Icons.photo_library, color: _kPrimaryColor),
+                title: const Text('Gallery'),
+                onTap: () async {
+                  Navigator.pop(sheetContext);
+                  final image = await _imagePicker.pickImage(
+                    source: ImageSource.gallery,
+                  );
+                  if (image != null && mounted) {
+                    setState(() => _selectedImage = File(image.path));
+                  }
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.camera_alt, color: _kPrimaryColor),
+                title: const Text('Camera'),
+                onTap: () async {
+                  Navigator.pop(sheetContext);
+                  final image = await _imagePicker.pickImage(
+                    source: ImageSource.camera,
+                  );
+                  if (image != null && mounted) {
+                    setState(() => _selectedImage = File(image.path));
+                  }
+                },
+              ),
+            ],
+          ),
         );
       },
     );
+  }
 
-    if (result != null) {
-      setState(() {
-        _photoUrlController.text = result.trim();
-      });
+  Future<String?> _uploadPhotoToStorage(File imageFile) async {
+    try {
+      setState(() => _isUploadingImage = true);
+
+      final user = _firebaseService.currentUser;
+      if (user == null) return null;
+
+      final fileName =
+          'users/${user.uid}/${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final ref = FirebaseStorage.instance.ref().child(fileName);
+
+      final uploadTask = ref.putFile(imageFile);
+      await uploadTask;
+
+      final downloadUrl = await ref.getDownloadURL();
+      return downloadUrl;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to upload photo: $e')));
+      }
+      return null;
+    } finally {
+      if (mounted) {
+        setState(() => _isUploadingImage = false);
+      }
+    }
+  }
+
+  Future<void> _deletePhotoFromStorage(String photoUrl) async {
+    try {
+      if (photoUrl.isEmpty) return;
+      final ref = FirebaseStorage.instance.refFromURL(photoUrl);
+      await ref.delete();
+    } catch (e) {
+      // Silently fail on deletion - don't interrupt the save flow
+      debugPrint('Failed to delete old photo: $e');
     }
   }
 
@@ -127,12 +181,21 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     setState(() => _isSaving = true);
     try {
+      String photoUrlToSave = _currentPhotoUrl;
+      if (_selectedImage != null) {
+        // Delete old photo before uploading new one
+        await _deletePhotoFromStorage(_currentPhotoUrl);
+        final uploadedUrl = await _uploadPhotoToStorage(_selectedImage!);
+        if (uploadedUrl == null || !mounted) return;
+        photoUrlToSave = uploadedUrl;
+      }
+
       await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
         'name': _nameController.text.trim(),
         'phone': _phoneController.text.trim(),
         'address': _addressController.text.trim(),
         'bio': _bioController.text.trim(),
-        'photoUrl': _photoUrlController.text.trim(),
+        'photoUrl': photoUrlToSave,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
@@ -167,7 +230,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _phoneController.dispose();
     _addressController.dispose();
     _bioController.dispose();
-    _photoUrlController.dispose();
     super.dispose();
   }
 
@@ -180,6 +242,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       backgroundColor: background,
       appBar: AppBar(
         elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.transparent,
         centerTitle: true,
         title: const Text(
           'Edit Profile',
@@ -219,33 +284,55 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                         width: 4,
                                       ),
                                     ),
-                                    child: ClipOval(
-                                      child:
-                                          _photoUrlController.text
-                                              .trim()
-                                              .isNotEmpty
-                                          ? Image.network(
-                                              _photoUrlController.text.trim(),
-                                              fit: BoxFit.cover,
-                                              errorBuilder:
-                                                  (_, error, stackTrace) {
-                                                    return _EditAvatarFallback(
-                                                      initials: _initials(
-                                                        _nameController.text,
-                                                      ),
-                                                    );
-                                                  },
-                                            )
-                                          : _EditAvatarFallback(
-                                              initials: _initials(
-                                                _nameController.text,
+                                    child: Stack(
+                                      fit: StackFit.expand,
+                                      children: [
+                                        ClipOval(
+                                          child: _selectedImage != null
+                                              ? Image.file(
+                                                  _selectedImage!,
+                                                  fit: BoxFit.cover,
+                                                )
+                                              : _currentPhotoUrl.isNotEmpty
+                                              ? Image.network(
+                                                  _currentPhotoUrl,
+                                                  fit: BoxFit.cover,
+                                                  errorBuilder:
+                                                      (_, error, stackTrace) {
+                                                        return _EditAvatarFallback(
+                                                          initials: _initials(
+                                                            _nameController
+                                                                .text,
+                                                          ),
+                                                        );
+                                                      },
+                                                )
+                                              : _EditAvatarFallback(
+                                                  initials: _initials(
+                                                    _nameController.text,
+                                                  ),
+                                                ),
+                                        ),
+                                        if (_isUploadingImage)
+                                          Container(
+                                            decoration: const BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              color: Colors.black54,
+                                            ),
+                                            child: const Center(
+                                              child: CircularProgressIndicator(
+                                                color: _kPrimaryColor,
                                               ),
                                             ),
+                                          ),
+                                      ],
                                     ),
                                   ),
                                   const SizedBox(height: 12),
                                   OutlinedButton.icon(
-                                    onPressed: _promptPhotoUrl,
+                                    onPressed: _isUploadingImage
+                                        ? null
+                                        : _selectPhoto,
                                     style: OutlinedButton.styleFrom(
                                       side: BorderSide(
                                         color: _kPrimaryColor.withValues(

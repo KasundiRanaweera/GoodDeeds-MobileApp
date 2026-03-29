@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../services/firebase_service.dart';
+import '../welcome_screen.dart';
 import 'community_screen.dart';
 import 'discover_events_screen.dart';
 import 'edit_profile_screen.dart';
@@ -19,6 +20,22 @@ class UserProfileScreen extends StatefulWidget {
 
 class _UserProfileScreenState extends State<UserProfileScreen> {
   final FirebaseService _firebaseService = FirebaseService();
+
+  Future<void> _signOut() async {
+    try {
+      await _firebaseService.signOut();
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const WelcomeScreen()),
+        (route) => false,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to sign out: $e')));
+    }
+  }
 
   String _asString(dynamic value, {String fallback = ''}) {
     if (value == null) return fallback;
@@ -140,6 +157,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             : _kBackgroundLight.withValues(alpha: 0.9),
         foregroundColor: isDark ? Colors.white : Colors.black,
         elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.transparent,
         actions: [
           IconButton(
             onPressed: () async {
@@ -215,20 +235,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 });
 
               final eventsAttended = sortedEvents.length;
-              final pointsFromEvents = sortedEvents.fold<int>(0, (
-                total,
-                event,
-              ) {
-                return total +
-                    _asInt(
-                      event['impactPoints'] ??
-                          event['points'] ??
-                          event['rewardPoints'],
-                    );
-              });
-              final impactPoints = basePoints > 0
-                  ? basePoints
-                  : pointsFromEvents;
+              final impactPoints = basePoints;
 
               return SafeArea(
                 child: Align(
@@ -240,6 +247,53 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: isDark
+                                    ? Colors.grey.shade900.withValues(
+                                        alpha: 0.55,
+                                      )
+                                    : Colors.white,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: _kPrimaryColor.withValues(alpha: 0.12),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Text(
+                                    'Account Actions',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      color: isDark
+                                          ? Colors.grey.shade300
+                                          : Colors.grey.shade700,
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  OutlinedButton.icon(
+                                    onPressed: _signOut,
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: Colors.red.shade400,
+                                      side: BorderSide(
+                                        color: Colors.red.shade300,
+                                      ),
+                                    ),
+                                    icon: const Icon(Icons.logout, size: 18),
+                                    label: const Text(
+                                      'Sign Out',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
                           Padding(
                             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
                             child: Center(

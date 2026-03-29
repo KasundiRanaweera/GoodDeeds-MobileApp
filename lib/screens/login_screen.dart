@@ -44,13 +44,12 @@ class _LoginScreenState extends State<LoginScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
           title: const Text(
             'Sign In Failed',
-            style: TextStyle(
-              color: Colors.black,
-              fontWeight: FontWeight.w700,
-            ),
+            style: TextStyle(color: Colors.black, fontWeight: FontWeight.w700),
           ),
           content: Text(
             message,
@@ -87,13 +86,12 @@ class _LoginScreenState extends State<LoginScreen> {
       barrierDismissible: false,
       builder: (context) {
         return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
           title: const Text(
             'Login Successful',
-            style: TextStyle(
-              color: Colors.black,
-              fontWeight: FontWeight.w700,
-            ),
+            style: TextStyle(color: Colors.black, fontWeight: FontWeight.w700),
           ),
           content: const Text(
             'Welcome back!',
@@ -153,6 +151,9 @@ class _LoginScreenState extends State<LoginScreen> {
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
         elevation: 1,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.transparent,
       ),
       body: SafeArea(
         child: LayoutBuilder(
@@ -276,13 +277,26 @@ class _LoginScreenState extends State<LoginScreen> {
                                         );
                                         if (!mounted) return;
 
-                                        final userData = await _firebaseService
-                                            .getUserData(
-                                              _firebaseService.currentUser!.uid,
+                                        String role = '';
+                                        try {
+                                          final user =
+                                              _firebaseService.currentUser;
+                                          if (user != null) {
+                                            final userData =
+                                                await _firebaseService
+                                                    .getUserData(user.uid);
+                                            role = _normalizedRole(
+                                              userData?['role'] as String?,
                                             );
-                                        final role = _normalizedRole(
-                                          userData?['role'] as String?,
-                                        );
+                                          }
+                                        } catch (e, st) {
+                                          // Authentication already succeeded.
+                                          // If user profile read is blocked (e.g. Firestore rules),
+                                          // allow login to continue with a safe fallback route.
+                                          debugPrint(
+                                            'Login role lookup failed: $e\n$st',
+                                          );
+                                        }
 
                                         await _showLoginSuccessAlert();
                                         if (!mounted) return;

@@ -26,7 +26,10 @@ class WelcomeScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 16,
+                    ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -40,7 +43,9 @@ class WelcomeScreen extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(14),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: _kPrimaryColor.withValues(alpha: 0.35),
+                                    color: _kPrimaryColor.withValues(
+                                      alpha: 0.35,
+                                    ),
                                     blurRadius: 16,
                                     offset: const Offset(0, 8),
                                   ),
@@ -103,7 +108,9 @@ class WelcomeScreen extends StatelessWidget {
                             'Join events, support communities, and inspire others through your actions.',
                             textAlign: TextAlign.center,
                             style: TextStyle(
-                              color: isDark ? Colors.grey[300] : Colors.grey[700],
+                              color: isDark
+                                  ? Colors.grey[300]
+                                  : Colors.grey[700],
                               fontSize: isWide ? 18 : 16,
                               height: 1.4,
                             ),
@@ -129,7 +136,9 @@ class WelcomeScreen extends StatelessWidget {
                                     style: FilledButton.styleFrom(
                                       backgroundColor: _kPrimaryColor,
                                       foregroundColor: Colors.black,
-                                      padding: const EdgeInsets.symmetric(vertical: 16),
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 16,
+                                      ),
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(14),
                                       ),
@@ -147,16 +156,23 @@ class WelcomeScreen extends StatelessWidget {
                                     onPressed: () {
                                       Navigator.of(context).push(
                                         MaterialPageRoute(
-                                          builder: (_) => const RegisterScreen(),
+                                          builder: (_) =>
+                                              const RegisterScreen(),
                                         ),
                                       );
                                     },
                                     style: OutlinedButton.styleFrom(
-                                      foregroundColor: isDark ? Colors.white : Colors.black,
+                                      foregroundColor: isDark
+                                          ? Colors.white
+                                          : Colors.black,
                                       side: BorderSide(
-                                        color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
+                                        color: isDark
+                                            ? Colors.grey.shade700
+                                            : Colors.grey.shade300,
                                       ),
-                                      padding: const EdgeInsets.symmetric(vertical: 16),
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 16,
+                                      ),
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(14),
                                       ),
@@ -180,7 +196,9 @@ class WelcomeScreen extends StatelessWidget {
                                     'Join 2,000+ others helping their local community',
                                     textAlign: TextAlign.center,
                                     style: TextStyle(
-                                      color: isDark ? Colors.grey[300] : Colors.grey[600],
+                                      color: isDark
+                                          ? Colors.grey[300]
+                                          : Colors.grey[600],
                                       fontSize: 14,
                                       fontWeight: FontWeight.w500,
                                     ),
@@ -196,7 +214,10 @@ class WelcomeScreen extends StatelessWidget {
                   ),
                   const Divider(height: 0),
                   Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 20,
+                      horizontal: 20,
+                    ),
                     child: Column(
                       children: [
                         Row(
@@ -271,10 +292,7 @@ class _HeroImage extends StatelessWidget {
                 gradient: LinearGradient(
                   begin: Alignment.bottomCenter,
                   end: Alignment.topCenter,
-                  colors: [
-                    Colors.black38,
-                    Colors.transparent,
-                  ],
+                  colors: [Colors.black38, Colors.transparent],
                 ),
               ),
             ),
@@ -302,7 +320,9 @@ class _AvatarStack extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final stackWidth =
-        (_avatars.length - 1) * _avatarSpacing + (_avatarRadius * 2) + _badgeSize;
+        (_avatars.length - 1) * _avatarSpacing +
+        (_avatarRadius * 2) +
+        _badgeSize;
 
     return SizedBox(
       width: stackWidth,

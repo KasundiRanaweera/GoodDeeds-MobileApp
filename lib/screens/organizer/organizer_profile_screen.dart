@@ -17,6 +17,7 @@ class OrganizerProfileScreen extends StatefulWidget {
 }
 
 class _OrganizerProfileScreenState extends State<OrganizerProfileScreen> {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
@@ -25,6 +26,34 @@ class _OrganizerProfileScreenState extends State<OrganizerProfileScreen> {
   bool _isSaving = false;
 
   User? get _user => FirebaseAuth.instance.currentUser;
+
+  CollectionReference<Map<String, dynamic>> get _usersCollection =>
+      _firestore.collection('users');
+
+  String _asTrimmedString(dynamic value, {String fallback = ''}) {
+    final text = value?.toString().trim() ?? '';
+    return text.isEmpty ? fallback : text;
+  }
+
+  String _profileDisplayName() {
+    final current = _nameController.text.trim();
+    return current.isEmpty ? 'Organizer' : current;
+  }
+
+  void _navigateFromBottomNav(int index) {
+    if (index == 0) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const OrganizerDashboardScreen()),
+      );
+      return;
+    }
+
+    if (index == 1) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const CreateEventScreen()),
+      );
+    }
+  }
 
   @override
   void dispose() {
@@ -70,7 +99,7 @@ class _OrganizerProfileScreenState extends State<OrganizerProfileScreen> {
       final name = _nameController.text.trim();
       final phone = _phoneController.text.trim();
 
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+      await _usersCollection.doc(user.uid).set({
         'name': name,
         'phone': phone,
         'updatedAt': FieldValue.serverTimestamp(),
@@ -117,6 +146,9 @@ class _OrganizerProfileScreenState extends State<OrganizerProfileScreen> {
         appBar: AppBar(
           centerTitle: true,
           elevation: 0,
+          scrolledUnderElevation: 0,
+          surfaceTintColor: Colors.transparent,
+          shadowColor: Colors.transparent,
           title: const Text('My Profile'),
           backgroundColor: isDark
               ? _kBackgroundDark.withValues(alpha: 0.84)
@@ -132,15 +164,15 @@ class _OrganizerProfileScreenState extends State<OrganizerProfileScreen> {
       appBar: AppBar(
         centerTitle: true,
         elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.transparent,
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: const [
             Icon(Icons.person, color: _kPrimaryColor),
             SizedBox(width: 8),
-            Text(
-              'Organizer Profile',
-              style: TextStyle(fontWeight: FontWeight.w800),
-            ),
+            Text('My Profile', style: TextStyle(fontWeight: FontWeight.w800)),
           ],
         ),
         backgroundColor: isDark
@@ -149,21 +181,22 @@ class _OrganizerProfileScreenState extends State<OrganizerProfileScreen> {
         foregroundColor: isDark ? Colors.white : Colors.black,
       ),
       body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .snapshots(),
+        stream: _usersCollection.doc(user.uid).snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
 
           final data = snapshot.data?.data() ?? <String, dynamic>{};
-          final name = (data['name'] ?? user.displayName ?? '')
-              .toString()
-              .trim();
-          final email = (data['email'] ?? user.email ?? '').toString().trim();
-          final phone = (data['phone'] ?? '').toString().trim();
+          final name = _asTrimmedString(
+            data['name'],
+            fallback: _asTrimmedString(user.displayName),
+          );
+          final email = _asTrimmedString(
+            data['email'],
+            fallback: user.email ?? '',
+          );
+          final phone = _asTrimmedString(data['phone']);
           final joinedDate = _formatDate(data['createdAt']);
 
           if (!_seeded) {
@@ -212,9 +245,7 @@ class _OrganizerProfileScreenState extends State<OrganizerProfileScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    _nameController.text.trim().isEmpty
-                                        ? 'Organizer'
-                                        : _nameController.text.trim(),
+                                    _profileDisplayName(),
                                     style: TextStyle(
                                       fontWeight: FontWeight.w800,
                                       fontSize: 18,
@@ -304,21 +335,7 @@ class _OrganizerProfileScreenState extends State<OrganizerProfileScreen> {
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: 2,
-        onTap: (index) {
-          if (index == 0) {
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(
-                builder: (_) => const OrganizerDashboardScreen(),
-              ),
-            );
-            return;
-          }
-          if (index == 1) {
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(builder: (_) => const CreateEventScreen()),
-            );
-          }
-        },
+        onTap: _navigateFromBottomNav,
         type: BottomNavigationBarType.fixed,
         selectedItemColor: _kPrimaryColor,
         unselectedItemColor: isDark

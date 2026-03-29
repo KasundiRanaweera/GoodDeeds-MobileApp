@@ -148,6 +148,9 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
         backgroundColor: isDark ? _kBackgroundDark : Colors.white,
         foregroundColor: isDark ? Colors.white : Colors.black,
         elevation: 1,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.transparent,
         actions: [
           IconButton(onPressed: () {}, icon: const Icon(Icons.more_vert)),
         ],

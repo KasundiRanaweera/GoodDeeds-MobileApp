@@ -265,6 +265,9 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
           backgroundColor: isDark ? _kBackgroundDark : _kBackgroundLight,
           foregroundColor: isDark ? Colors.white : Colors.black,
           elevation: 0,
+          scrolledUnderElevation: 0,
+          surfaceTintColor: Colors.transparent,
+          shadowColor: Colors.transparent,
         ),
         body: Center(
           child: Padding(
@@ -287,13 +290,7 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(
-                builder: (_) => const OrganizerDashboardScreen(),
-              ),
-            );
-          },
+          onPressed: () => Navigator.of(context).pop(),
         ),
         title: const Text(
           'Participants',
@@ -301,6 +298,9 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
         ),
         centerTitle: true,
         elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.transparent,
         backgroundColor: isDark
             ? _kBackgroundDark.withValues(alpha: 0.85)
             : _kBackgroundLight.withValues(alpha: 0.9),

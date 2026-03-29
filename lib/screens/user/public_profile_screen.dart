@@ -108,6 +108,9 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         ),
         centerTitle: true,
         elevation: 1,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.transparent,
         backgroundColor: isDark ? Colors.grey.shade900 : Colors.white,
         foregroundColor: isDark ? Colors.white : Colors.black,
       ),
@@ -721,6 +724,8 @@ class PublicUserDetailScreen extends StatelessWidget {
         foregroundColor: isDark ? Colors.white : Colors.black,
         elevation: 0,
         scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.transparent,
       ),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: uid.isEmpty

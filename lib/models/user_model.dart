@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'model_parsers.dart';
+
 class UserModel {
   const UserModel({
     required this.id,
@@ -72,18 +74,18 @@ class UserModel {
 
     return UserModel(
       id: id,
-      name: (map['name'] ?? '').toString().trim(),
-      email: (map['email'] ?? '').toString().trim(),
-      phone: (map['phone'] ?? '').toString().trim(),
+      name: ModelParsers.parseString(map['name']),
+      email: ModelParsers.parseString(map['email']),
+      phone: ModelParsers.parseString(map['phone']),
       roles: parsedRoles,
-      impactPoints: _parseInt(
+      impactPoints: ModelParsers.parseInt(
         map['impactPoints'] ??
             map['totalPoints'] ??
             map['rewardPoints'] ??
             map['points'],
       ),
-      createdAt: _parseDate(map['createdAt']),
-      updatedAt: _parseDate(map['updatedAt']),
+      createdAt: ModelParsers.parseDate(map['createdAt']),
+      updatedAt: ModelParsers.parseDate(map['updatedAt']),
     );
   }
 
@@ -93,31 +95,19 @@ class UserModel {
   }
 
   static List<String> _parseRoles(Map<String, dynamic> map) {
-    final rawRoles = map['roles'];
-    if (rawRoles is List) {
-      final roles = rawRoles
-          .map((item) => item.toString().trim())
-          .where((item) => item.isNotEmpty)
-          .toList();
-      if (roles.isNotEmpty) {
-        return roles;
-      }
+    final roles = ModelParsers.parseStringList(map['roles']);
+    if (roles.isNotEmpty) {
+      return roles;
     }
 
-    final fallbackRole = (map['role'] ?? 'Volunteer').toString().trim();
-    return fallbackRole.isEmpty ? const ['Volunteer'] : [fallbackRole];
-  }
+    final fallbackRole = ModelParsers.parseString(
+      map['role'],
+      fallback: 'Volunteer',
+    );
+    if (fallbackRole.isNotEmpty) {
+      return [fallbackRole];
+    }
 
-  static int _parseInt(dynamic value) {
-    if (value is int) return value;
-    if (value is num) return value.toInt();
-    return int.tryParse(value?.toString() ?? '') ?? 0;
-  }
-
-  static DateTime? _parseDate(dynamic value) {
-    if (value is Timestamp) return value.toDate();
-    if (value is DateTime) return value;
-    if (value is String) return DateTime.tryParse(value);
-    return null;
+    return const ['Volunteer'];
   }
 }

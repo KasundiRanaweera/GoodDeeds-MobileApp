@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'model_parsers.dart';
+
 class EventModel {
   const EventModel({
     required this.id,
@@ -122,82 +124,61 @@ class EventModel {
   factory EventModel.fromMap(Map<String, dynamic> map, {required String id}) {
     return EventModel(
       id: id,
-      title: _parseString(
+      title: ModelParsers.parseString(
         map['title'] ?? map['eventName'] ?? map['name'],
         fallback: 'Untitled Event',
       ),
-      description: _parseString(
+      description: ModelParsers.parseString(
         map['description'] ?? map['details'] ?? map['about'],
       ),
-      location: _parseString(map['location'] ?? map['venue'] ?? map['address']),
-      category: _parseString(
+      location: ModelParsers.parseString(
+        map['location'] ?? map['venue'] ?? map['address'],
+      ),
+      category: ModelParsers.parseString(
         map['category'] ?? map['type'] ?? map['eventCategory'],
       ),
-      impactPoints: _parseInt(
+      impactPoints: ModelParsers.parseInt(
         map['impactPoints'] ?? map['points'] ?? map['rewardPoints'],
       ),
-      eventDate: _parseDate(
+      eventDate: ModelParsers.parseDate(
         map['eventDate'] ?? map['date'] ?? map['startDate'],
       ),
-      imageUrl: _parseString(
+      imageUrl: ModelParsers.parseString(
         map['imageUrl'] ?? map['bannerUrl'] ?? map['photoUrl'],
       ),
-      organizerName: _parseString(map['organizerName'] ?? map['createdByName']),
-      organizerContactNumber: _parseString(
+      organizerName: ModelParsers.parseString(
+        map['organizerName'] ?? map['createdByName'],
+      ),
+      organizerContactNumber: ModelParsers.parseString(
         map['organizerContactNumber'] ?? map['contactNumber'] ?? map['phone'],
       ),
-      createdByUid: _parseString(
+      createdByUid: ModelParsers.parseString(
         map['createdByUid'] ??
             map['organizerId'] ??
             map['userId'] ??
             map['ownerId'],
       ),
-      createdByName: _parseString(map['createdByName'] ?? map['organizerName']),
-      participantsCount: _parseInt(
+      createdByName: ModelParsers.parseString(
+        map['createdByName'] ?? map['organizerName'],
+      ),
+      participantsCount: ModelParsers.parseInt(
         map['participantsCount'] ??
             map['participantCount'] ??
             map['joinedCount'],
       ),
-      participantIds: _parseStringList(map['participantIds']),
-      checkedInIds: _parseStringList(map['checkedInIds']),
-      awardedParticipantIds: _parseStringList(map['awardedParticipantIds']),
-      status: _parseString(map['status'], fallback: 'active'),
-      createdAt: _parseDate(map['createdAt']),
-      updatedAt: _parseDate(map['updatedAt']),
+      participantIds: ModelParsers.parseStringList(map['participantIds']),
+      checkedInIds: ModelParsers.parseStringList(map['checkedInIds']),
+      awardedParticipantIds: ModelParsers.parseStringList(
+        map['awardedParticipantIds'],
+      ),
+      status: ModelParsers.parseString(map['status'], fallback: 'active'),
+      createdAt: ModelParsers.parseDate(map['createdAt']),
+      updatedAt: ModelParsers.parseDate(map['updatedAt']),
     );
   }
 
   factory EventModel.fromDocument(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? <String, dynamic>{};
     return EventModel.fromMap(data, id: doc.id);
-  }
-
-  static String _parseString(dynamic value, {String fallback = ''}) {
-    if (value == null) return fallback;
-    final text = value.toString().trim();
-    return text.isEmpty ? fallback : text;
-  }
-
-  static int _parseInt(dynamic value) {
-    if (value is int) return value;
-    if (value is num) return value.toInt();
-    return int.tryParse(value?.toString() ?? '') ?? 0;
-  }
-
-  static DateTime? _parseDate(dynamic value) {
-    if (value is Timestamp) return value.toDate();
-    if (value is DateTime) return value;
-    if (value is String) return DateTime.tryParse(value);
-    return null;
-  }
-
-  static List<String> _parseStringList(dynamic value) {
-    if (value is List) {
-      return value
-          .map((item) => item.toString().trim())
-          .where((item) => item.isNotEmpty)
-          .toList();
-    }
-    return const [];
   }
 }

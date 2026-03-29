@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../constants/event_categories.dart';
 import '../../services/firebase_service.dart';
 import 'community_screen.dart';
 import 'event_details_screen.dart';
@@ -19,13 +20,7 @@ class DiscoverEventsScreen extends StatefulWidget {
 
 class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
   final FirebaseService _firebaseService = FirebaseService();
-  final List<String> _categories = const [
-    'All',
-    'Environmental',
-    'Education',
-    'Charity',
-    'Volunteering',
-  ];
+  late final List<String> _categories = kDiscoverEventCategories;
   int _selectedCategory = 0;
 
   List<Map<String, dynamic>> _filterByCategory(
@@ -34,20 +29,10 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
     final selected = _categories[_selectedCategory];
     if (selected == 'All') return events;
 
-    final acceptedValues = <String>{selected.toLowerCase()};
-    if (selected == 'Environmental') {
-      acceptedValues.add('environment');
-    }
-    if (selected == 'Volunteering') {
-      acceptedValues.add('community');
-      acceptedValues.add('volunteering');
-      acceptedValues.add('volunteer');
-    }
-
     return events.where((event) {
       final raw = event['category'] ?? event['type'] ?? event['eventCategory'];
       final value = (raw?.toString() ?? '').toLowerCase();
-      return acceptedValues.contains(value);
+      return value == selected.toLowerCase();
     }).toList();
   }
 
@@ -313,21 +298,29 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
                                 event['joinedCount'],
                             fallback: 0,
                           );
+                          final organizerPhone = _asString(
+                            event['contactNumber'] ??
+                                event['organizerPhone'] ??
+                                event['createdByPhone'],
+                          );
 
                           return Container(
                             decoration: BoxDecoration(
-                              color: isDark ? Colors.grey[850] : Colors.white,
+                              color: isDark ? Colors.grey[900] : Colors.white,
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
-                                color: _kPrimaryColor.withValues(alpha: 0.08),
+                                color: isDark
+                                    ? Colors.grey[800]!.withValues(alpha: 0.6)
+                                    : Colors.grey[200]!.withValues(alpha: 0.7),
                               ),
                               boxShadow: [
                                 BoxShadow(
                                   color: Colors.black.withValues(
-                                    alpha: isDark ? 0.18 : 0.04,
+                                    alpha: isDark ? 0.25 : 0.08,
                                   ),
-                                  blurRadius: 12,
-                                  offset: const Offset(0, 5),
+                                  blurRadius: 16,
+                                  spreadRadius: 0,
+                                  offset: const Offset(0, 6),
                                 ),
                               ],
                             ),
@@ -343,16 +336,40 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
                                     child: Stack(
                                       fit: StackFit.expand,
                                       children: [
+                                        Container(
+                                          decoration: BoxDecoration(
+                                            gradient: LinearGradient(
+                                              begin: Alignment.topCenter,
+                                              end: Alignment.bottomCenter,
+                                              colors: [
+                                                Colors.black.withValues(
+                                                  alpha: 0.1,
+                                                ),
+                                                Colors.black.withValues(
+                                                  alpha: 0.3,
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
                                         if (imageUrl.isNotEmpty)
                                           Image.network(
                                             imageUrl,
                                             fit: BoxFit.cover,
+                                            filterQuality: FilterQuality.high,
                                             errorBuilder:
                                                 (_, error, stackTrace) {
                                                   return Container(
                                                     color: isDark
                                                         ? Colors.grey[800]
                                                         : Colors.grey[200],
+                                                    child: const Center(
+                                                      child: Icon(
+                                                        Icons.image,
+                                                        size: 48,
+                                                        color: Colors.grey,
+                                                      ),
+                                                    ),
                                                   );
                                                 },
                                           )
@@ -364,7 +381,7 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
                                             child: const Center(
                                               child: Icon(
                                                 Icons.image,
-                                                size: 42,
+                                                size: 48,
                                                 color: Colors.grey,
                                               ),
                                             ),
@@ -432,70 +449,121 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
                                       Text(
                                         title,
                                         style: TextStyle(
-                                          fontSize: 19,
-                                          fontWeight: FontWeight.w800,
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.w900,
                                           color: isDark
                                               ? Colors.white
                                               : Colors.black,
                                         ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
                                       ),
-                                      const SizedBox(height: 6),
+                                      const SizedBox(height: 8),
                                       Text(
                                         description,
                                         style: TextStyle(
                                           fontSize: 13,
                                           color: isDark
-                                              ? Colors.grey[300]
-                                              : Colors.grey[600],
-                                          height: 1.35,
+                                              ? Colors.grey[350]
+                                              : Colors.grey[700],
+                                          height: 1.45,
+                                        ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 14),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 8,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: _kPrimaryColor.withValues(
+                                            alpha: 0.12,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.location_on,
+                                              size: 16,
+                                              color: _kPrimaryColor,
+                                            ),
+                                            const SizedBox(width: 5),
+                                            Expanded(
+                                              child: Text(
+                                                location,
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: _kPrimaryColor,
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
-                                      const SizedBox(height: 12),
+                                      const SizedBox(height: 8),
                                       Row(
                                         children: [
                                           Icon(
-                                            Icons.location_on,
-                                            size: 17,
+                                            Icons.calendar_today,
+                                            size: 14,
                                             color: isDark
-                                                ? Colors.grey[400]
+                                                ? Colors.grey[500]
                                                 : Colors.grey[600],
                                           ),
                                           const SizedBox(width: 6),
                                           Expanded(
                                             child: Text(
-                                              location,
+                                              _formatDate(date),
                                               style: TextStyle(
-                                                fontSize: 13,
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w500,
                                                 color: isDark
-                                                    ? Colors.grey[300]
-                                                    : Colors.grey[600],
+                                                    ? Colors.grey[400]
+                                                    : Colors.grey[700],
                                               ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
                                             ),
                                           ),
                                         ],
                                       ),
-                                      const SizedBox(height: 5),
-                                      Row(
-                                        children: [
-                                          Icon(
-                                            Icons.calendar_today,
-                                            size: 15,
-                                            color: isDark
-                                                ? Colors.grey[400]
-                                                : Colors.grey[600],
-                                          ),
-                                          const SizedBox(width: 6),
-                                          Text(
-                                            _formatDate(date),
-                                            style: TextStyle(
-                                              fontSize: 13,
+                                      const SizedBox(height: 8),
+                                      if (organizerPhone.isNotEmpty)
+                                        Row(
+                                          children: [
+                                            Icon(
+                                              Icons.phone,
+                                              size: 14,
                                               color: isDark
-                                                  ? Colors.grey[300]
+                                                  ? Colors.grey[500]
                                                   : Colors.grey[600],
                                             ),
-                                          ),
-                                        ],
-                                      ),
+                                            const SizedBox(width: 6),
+                                            Expanded(
+                                              child: Text(
+                                                organizerPhone,
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: isDark
+                                                      ? Colors.grey[300]
+                                                      : Colors.grey[800],
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       const SizedBox(height: 14),
                                       Row(
                                         children: [

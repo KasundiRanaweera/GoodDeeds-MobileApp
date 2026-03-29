@@ -1,8 +1,12 @@
+import 'dart:io';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../services/firebase_service.dart';
-import 'create_event_screen.dart';
 import 'organizer_dashboard_screen.dart';
 
 const _kPrimaryColor = Color(0xFF0DF233);
@@ -21,13 +25,14 @@ class ManageEventScreen extends StatefulWidget {
 class _ManageEventScreenState extends State<ManageEventScreen> {
   final FirebaseService _firebaseService = FirebaseService();
   final _formKey = GlobalKey<FormState>();
+  final ImagePicker _imagePicker = ImagePicker();
 
   late final TextEditingController _organizerNameController;
   late final TextEditingController _eventTitleController;
   late final TextEditingController _descriptionController;
   late final TextEditingController _locationController;
   late final TextEditingController _pointsController;
-  late final TextEditingController _bannerUrlController;
+  late final TextEditingController _contactNumberController;
 
   final List<String> _categories = const [
     'Environment',
@@ -44,6 +49,10 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
   DateTime? _selectedDate;
   TimeOfDay? _selectedTime;
   bool _isSaving = false;
+  File? _selectedImage;
+  Uint8List? _selectedImageBytes;
+  bool _isUploadingImage = false;
+  late String _currentImageUrl;
 
   String get _eventId => widget.eventData['id']?.toString() ?? '';
 
@@ -78,19 +87,27 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
       ),
     );
     _pointsController = TextEditingController(
-      text: _asInt(
-        widget.eventData['impactPoints'] ??
-            widget.eventData['points'] ??
-            widget.eventData['rewardPoints'],
-        fallback: 0,
-      ).toString(),
+      text: () {
+        final initial = _asInt(
+          widget.eventData['impactPoints'] ??
+              widget.eventData['points'] ??
+              widget.eventData['rewardPoints'],
+          fallback: 50,
+        );
+        if (initial < 50) return '50';
+        if (initial > 200) return '200';
+        return initial.toString();
+      }(),
     );
-    _bannerUrlController = TextEditingController(
+    _contactNumberController = TextEditingController(
       text: _asString(
-        widget.eventData['imageUrl'] ??
-            widget.eventData['bannerUrl'] ??
-            widget.eventData['photoUrl'],
+        widget.eventData['contactNumber'] ?? widget.eventData['phone'],
       ),
+    );
+    _currentImageUrl = _asString(
+      widget.eventData['imageUrl'] ??
+          widget.eventData['bannerUrl'] ??
+          widget.eventData['photoUrl'],
     );
 
     final rawCategory = _asString(widget.eventData['category']);
@@ -124,7 +141,7 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
     _descriptionController.dispose();
     _locationController.dispose();
     _pointsController.dispose();
-    _bannerUrlController.dispose();
+    _contactNumberController.dispose();
     super.dispose();
   }
 
@@ -177,6 +194,202 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
     }
   }
 
+  Future<void> _selectImage() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) {
+        return Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Select Image Source',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: const Icon(Icons.photo_library, color: _kPrimaryColor),
+                title: const Text('Gallery'),
+                onTap: () async {
+                  Navigator.pop(sheetContext);
+                  final image = await _imagePicker.pickImage(
+                    source: ImageSource.gallery,
+                  );
+                  if (image != null && mounted) {
+                    if (kIsWeb) {
+                      final bytes = await image.readAsBytes();
+                      if (!mounted) return;
+                      setState(() {
+                        _selectedImageBytes = bytes;
+                        _selectedImage = null;
+                      });
+                    } else {
+                      setState(() {
+                        _selectedImage = File(image.path);
+                        _selectedImageBytes = null;
+                      });
+                    }
+                  }
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.camera_alt, color: _kPrimaryColor),
+                title: const Text('Camera'),
+                onTap: () async {
+                  Navigator.pop(sheetContext);
+                  final image = await _imagePicker.pickImage(
+                    source: ImageSource.camera,
+                  );
+                  if (image != null && mounted) {
+                    if (kIsWeb) {
+                      final bytes = await image.readAsBytes();
+                      if (!mounted) return;
+                      setState(() {
+                        _selectedImageBytes = bytes;
+                        _selectedImage = null;
+                      });
+                    } else {
+                      setState(() {
+                        _selectedImage = File(image.path);
+                        _selectedImageBytes = null;
+                      });
+                    }
+                  }
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<String?> _uploadSelectedImageToStorage() async {
+    try {
+      setState(() => _isUploadingImage = true);
+
+      final user = _firebaseService.currentUser;
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+
+      final fileName =
+          'events/${user.uid}/${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final ref = FirebaseStorage.instance.ref().child(fileName);
+
+      debugPrint('=== Starting image upload ===');
+      debugPrint('User UID: ${user.uid}');
+      debugPrint('File path: $fileName');
+
+      final UploadTask uploadTask;
+
+      if (kIsWeb) {
+        final bytes = _selectedImageBytes;
+        if (bytes == null || bytes.isEmpty) {
+          throw Exception('No image data available for upload on web');
+        }
+        debugPrint('Web upload: bytes size = ${bytes.length}');
+        uploadTask = ref.putData(
+          bytes,
+          SettableMetadata(
+            contentType: 'image/jpeg',
+            customMetadata: {
+              'uploadedBy': user.uid,
+              'uploadedAt': DateTime.now().toIso8601String(),
+            },
+          ),
+        );
+      } else {
+        final imageFile = _selectedImage;
+        if (imageFile == null || !imageFile.existsSync()) {
+          throw Exception('Image file not found or invalid');
+        }
+        final fileSize = imageFile.lengthSync();
+        debugPrint('Mobile upload: file size = $fileSize');
+        uploadTask = ref.putFile(
+          imageFile,
+          SettableMetadata(
+            customMetadata: {
+              'uploadedBy': user.uid,
+              'uploadedAt': DateTime.now().toIso8601String(),
+            },
+          ),
+        );
+      }
+
+      // Monitor upload progress
+      uploadTask.snapshotEvents.listen(
+        (TaskSnapshot snapshot) {
+          if (mounted) {
+            final totalBytes = snapshot.totalBytes;
+            if (totalBytes <= 0) {
+              debugPrint(
+                'Upload progress: waiting for total bytes... state=${snapshot.state}',
+              );
+              return;
+            }
+            final progress = (snapshot.bytesTransferred / totalBytes * 100)
+                .toInt();
+            debugPrint('Upload progress: $progress%');
+          }
+        },
+        onError: (Object e) {
+          debugPrint('Upload stream error: $e');
+        },
+      );
+
+      // Wait for upload with timeout
+      debugPrint('Waiting for upload to complete...');
+      await uploadTask.timeout(
+        const Duration(seconds: 60),
+        onTimeout: () {
+          throw Exception('Upload timeout - took longer than 60 seconds');
+        },
+      );
+
+      debugPrint('Upload complete, getting download URL...');
+
+      // Get and verify download URL
+      final downloadUrl = await ref.getDownloadURL();
+      if (downloadUrl.isEmpty) {
+        throw Exception('Failed to get download URL for uploaded image');
+      }
+
+      debugPrint('Image uploaded successfully: $downloadUrl');
+      debugPrint('=== Upload finished successfully ===');
+      return downloadUrl;
+    } catch (e, st) {
+      debugPrint('=== Image upload error ===');
+      debugPrint('Error: $e');
+      debugPrint('Stack trace: $st');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to upload image: $e'),
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+      return null;
+    } finally {
+      if (mounted) {
+        setState(() => _isUploadingImage = false);
+      }
+    }
+  }
+
+  Future<void> _deleteImageFromStorage(String imageUrl) async {
+    try {
+      if (imageUrl.isEmpty) return;
+      final ref = FirebaseStorage.instance.refFromURL(imageUrl);
+      await ref.delete();
+    } catch (e) {
+      // Silently fail on deletion - don't interrupt the save flow
+      debugPrint('Failed to delete old image: $e');
+    }
+  }
+
   Future<void> _saveChanges() async {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedDate == null || _selectedTime == null) {
@@ -204,25 +417,66 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
 
     setState(() => _isSaving = true);
     try {
+      final points = int.tryParse(_pointsController.text.trim()) ?? 0;
+      if (points < 50 || points > 200) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Reward points must be between 50 and 200.'),
+          ),
+        );
+        return;
+      }
+
+      String imageUrlToSave = _currentImageUrl;
+      if (_selectedImage != null || _selectedImageBytes != null) {
+        // Delete old image before uploading new one
+        await _deleteImageFromStorage(_currentImageUrl);
+        final uploadedUrl = await _uploadSelectedImageToStorage();
+        if (uploadedUrl == null || !mounted) return;
+        imageUrlToSave = uploadedUrl;
+      }
+
+      // Validate all required fields
+      final organizerName = _organizerNameController.text.trim();
+      final title = _eventTitleController.text.trim();
+      final description = _descriptionController.text.trim();
+      final location = _locationController.text.trim();
+
+      if (organizerName.isEmpty ||
+          title.isEmpty ||
+          description.isEmpty ||
+          location.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please fill in all required fields.')),
+        );
+        return;
+      }
+
+      // Update event with all fields
       await FirebaseFirestore.instance
           .collection('events')
           .doc(_eventId)
           .update({
-            'organizerName': _organizerNameController.text.trim(),
-            'createdByName': _organizerNameController.text.trim(),
-            'title': _eventTitleController.text.trim(),
-            'description': _descriptionController.text.trim(),
+            'organizerName': organizerName,
+            'createdByName': organizerName,
+            'title': title,
+            'description': description,
             'category': _selectedCategory,
-            'impactPoints': int.tryParse(_pointsController.text.trim()) ?? 0,
-            'location': _locationController.text.trim(),
-            'imageUrl': _bannerUrlController.text.trim(),
+            'impactPoints': points,
+            'location': location,
+            'contactNumber': _contactNumberController.text.trim(),
+            'imageUrl': imageUrlToSave,
             'eventDate': Timestamp.fromDate(selectedDateTime),
             'updatedAt': FieldValue.serverTimestamp(),
           });
 
+      debugPrint('Event updated successfully: $_eventId');
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Event updated successfully.')),
+        const SnackBar(content: Text('Event edited successfully.')),
       );
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const OrganizerDashboardScreen()),
@@ -251,6 +505,9 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
             : _kBackgroundLight.withValues(alpha: 0.92),
         foregroundColor: isDark ? Colors.white : Colors.black,
         elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.transparent,
         centerTitle: true,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
@@ -327,7 +584,7 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
                         _label('Points Reward', isDark),
                         _field(
                           controller: _pointsController,
-                          hintText: '20',
+                          hintText: '50 - 200',
                           isDark: isDark,
                           keyboardType: TextInputType.number,
                           suffixIcon: Padding(
@@ -344,8 +601,11 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
                           ),
                           validator: (value) {
                             final points = int.tryParse((value ?? '').trim());
-                            if (points == null || points < 0) {
-                              return 'Invalid';
+                            if (points == null) {
+                              return 'Required';
+                            }
+                            if (points < 50 || points > 200) {
+                              return 'Use 50-200';
                             }
                             return null;
                           },
@@ -365,6 +625,21 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
                 validator: (value) {
                   if ((value ?? '').trim().isEmpty) {
                     return 'Location is required';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              _label('Contact Number', isDark),
+              _field(
+                controller: _contactNumberController,
+                hintText: 'e.g. 0712345678',
+                isDark: isDark,
+                keyboardType: TextInputType.phone,
+                prefixIcon: const Icon(Icons.phone, color: Colors.grey),
+                validator: (value) {
+                  if ((value ?? '').trim().isEmpty) {
+                    return 'Contact number is required';
                   }
                   return null;
                 },
@@ -436,11 +711,75 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
                 ],
               ),
               const SizedBox(height: 16),
-              _label('Banner URL', isDark),
-              _field(
-                controller: _bannerUrlController,
-                hintText: 'https://example.com/banner.jpg',
-                isDark: isDark,
+              _label('Event Banner', isDark),
+              InkWell(
+                onTap: _isUploadingImage ? null : _selectImage,
+                borderRadius: BorderRadius.circular(14),
+                child: Container(
+                  height: 180,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: _kPrimaryColor.withValues(alpha: 0.3),
+                      width: 2,
+                    ),
+                    color: _kPrimaryColor.withValues(alpha: 0.06),
+                  ),
+                  child: (_selectedImage != null || _selectedImageBytes != null)
+                      ? Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: _selectedImageBytes != null
+                                  ? Image.memory(
+                                      _selectedImageBytes!,
+                                      fit: BoxFit.cover,
+                                    )
+                                  : Image.file(
+                                      _selectedImage!,
+                                      fit: BoxFit.cover,
+                                    ),
+                            ),
+                            if (_isUploadingImage)
+                              Container(
+                                color: Colors.black.withValues(alpha: 0.3),
+                                child: const Center(
+                                  child: CircularProgressIndicator(
+                                    color: _kPrimaryColor,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        )
+                      : _currentImageUrl.isNotEmpty
+                      ? Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Image.network(
+                                _currentImageUrl,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, error, stackTrace) {
+                                  return _imagePlaceholder(isDark);
+                                },
+                              ),
+                            ),
+                            Container(
+                              color: Colors.black.withValues(alpha: 0.2),
+                              child: const Center(
+                                child: Icon(
+                                  Icons.edit,
+                                  color: Colors.white,
+                                  size: 32,
+                                ),
+                              ),
+                            ),
+                          ],
+                        )
+                      : _imagePlaceholder(isDark),
+                ),
               ),
               const SizedBox(height: 20),
               SizedBox(
@@ -466,7 +805,7 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
                           ),
                         )
                       : const Text(
-                          'Save Changes',
+                          'Edit Event',
                           style: TextStyle(
                             fontSize: 17,
                             fontWeight: FontWeight.w800,
@@ -477,47 +816,6 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
             ],
           ),
         ),
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: 0,
-        onTap: (index) {
-          if (index == 0) {
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(
-                builder: (_) => const OrganizerDashboardScreen(),
-              ),
-            );
-            return;
-          }
-
-          if (index == 1) {
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(builder: (_) => const CreateEventScreen()),
-            );
-            return;
-          }
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Participants screen coming soon.')),
-          );
-        },
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: _kPrimaryColor,
-        unselectedItemColor: isDark
-            ? Colors.grey.shade500
-            : Colors.grey.shade700,
-        backgroundColor: isDark ? Colors.grey.shade900 : Colors.white,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Dashboard'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.add_circle),
-            label: 'Create Event',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.people),
-            label: 'Participants',
-          ),
-        ],
       ),
     );
   }
@@ -666,6 +964,28 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
       'Dec',
     ];
     return '${months[date.month - 1]} ${date.day}, ${date.year}';
+  }
+
+  Widget _imagePlaceholder(bool isDark) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const Icon(Icons.add_photo_alternate, color: _kPrimaryColor, size: 42),
+        const SizedBox(height: 8),
+        const Text(
+          'Select event image',
+          style: TextStyle(color: _kPrimaryColor, fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Recommended: 1200 x 675 px',
+          style: TextStyle(
+            color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+            fontSize: 12,
+          ),
+        ),
+      ],
+    );
   }
 
   String _timeLabel() {
