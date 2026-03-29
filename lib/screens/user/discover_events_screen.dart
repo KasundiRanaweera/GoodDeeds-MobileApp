@@ -162,7 +162,7 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
                     ),
                   );
                 },
-                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                separatorBuilder: (context, index) => const SizedBox(width: 8),
                 itemCount: _categories.length,
               ),
             ),
@@ -238,7 +238,8 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
                       child: ListView.separated(
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
                         itemCount: events.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 14),
+                        separatorBuilder: (context, index) =>
+                            const SizedBox(height: 14),
                         itemBuilder: (context, index) {
                           final event = events[index];
                           final title = _asString(
@@ -328,12 +329,13 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
                                           Image.network(
                                             imageUrl,
                                             fit: BoxFit.cover,
-                                            errorBuilder: (_, __, ___) =>
-                                                Container(
-                                                  color: isDark
-                                                      ? Colors.grey[800]
-                                                      : Colors.grey[200],
-                                                ),
+                                            errorBuilder:
+                                                (context, error, stackTrace) =>
+                                                    Container(
+                                                      color: isDark
+                                                          ? Colors.grey[800]
+                                                          : Colors.grey[200],
+                                                    ),
                                           )
                                         else
                                           Container(
