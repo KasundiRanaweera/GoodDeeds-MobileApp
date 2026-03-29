@@ -112,4 +112,73 @@ class FirebaseService {
       return events;
     });
   }
+
+  // Stream events joined by the current user.
+  Stream<List<Map<String, dynamic>>> streamMyJoinedEvents() {
+    final user = _auth.currentUser;
+    if (user == null) {
+      return Stream.value(const <Map<String, dynamic>>[]);
+    }
+
+    return _firestore
+        .collection('events')
+        .where('participantIds', arrayContains: user.uid)
+        .snapshots()
+        .map((snapshot) {
+          final events = snapshot.docs
+              .map((doc) => {'id': doc.id, ...doc.data()})
+              .toList();
+
+          DateTime? toDate(dynamic value) {
+            if (value is Timestamp) return value.toDate();
+            if (value is DateTime) return value;
+            if (value is String) return DateTime.tryParse(value);
+            return null;
+          }
+
+          events.sort((a, b) {
+            final aDate = toDate(a['eventDate'] ?? a['date'] ?? a['startDate']);
+            final bDate = toDate(b['eventDate'] ?? b['date'] ?? b['startDate']);
+            if (aDate == null && bDate == null) return 0;
+            if (aDate == null) return 1;
+            if (bDate == null) return -1;
+            return bDate.compareTo(aDate);
+          });
+
+          return events;
+        });
+  }
+
+  // Join an event as the current volunteer.
+  Future<void> joinEvent({required String eventId}) async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw Exception('Please login to join events.');
+    }
+
+    final eventRef = _firestore.collection('events').doc(eventId);
+
+    await _firestore.runTransaction((transaction) async {
+      final snapshot = await transaction.get(eventRef);
+      if (!snapshot.exists) {
+        throw Exception('Event not found.');
+      }
+
+      final data = snapshot.data() ?? <String, dynamic>{};
+      final participantIds = List<String>.from(
+        (data['participantIds'] as List<dynamic>? ?? const [])
+            .map((e) => e.toString()),
+      );
+
+      if (!participantIds.contains(user.uid)) {
+        participantIds.add(user.uid);
+      }
+
+      transaction.update(eventRef, {
+        'participantIds': participantIds,
+        'participantsCount': participantIds.length,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    });
+  }
 }

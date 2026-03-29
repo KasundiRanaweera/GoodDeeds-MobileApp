@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
+
 import '../../services/firebase_service.dart';
+import 'community_screen.dart';
+import 'event_details_screen.dart';
+import 'my_events_screen.dart';
+import 'user_profile_screen.dart';
 
 const _kPrimaryColor = Color(0xFF0DF233);
 const _kBackgroundLight = Color(0xFFF8F6F6);
@@ -16,13 +21,12 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
   final FirebaseService _firebaseService = FirebaseService();
   final List<String> _categories = const [
     'All',
-    'Environment',
+    'Environmental',
     'Education',
-    'Community',
     'Charity',
+    'Volunteering',
   ];
   int _selectedCategory = 0;
-  int _selectedBottomNav = 0;
 
   List<Map<String, dynamic>> _filterByCategory(
     List<Map<String, dynamic>> events,
@@ -31,10 +35,11 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
     if (selected == 'All') return events;
 
     final acceptedValues = <String>{selected.toLowerCase()};
-    if (selected == 'Environment') {
-      acceptedValues.add('environmental');
+    if (selected == 'Environmental') {
+      acceptedValues.add('environment');
     }
-    if (selected == 'Community') {
+    if (selected == 'Volunteering') {
+      acceptedValues.add('community');
       acceptedValues.add('volunteering');
       acceptedValues.add('volunteer');
     }
@@ -85,9 +90,9 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
       'Nov',
       'Dec',
     ];
+
     final month = months[date.month - 1];
     final day = date.day.toString().padLeft(2, '0');
-
     final hour12 = date.hour % 12 == 0 ? 12 : date.hour % 12;
     final minute = date.minute.toString().padLeft(2, '0');
     final suffix = date.hour >= 12 ? 'PM' : 'AM';
@@ -107,6 +112,42 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
     return const [];
   }
 
+  Widget _categoryChip({
+    required int index,
+    required bool isSelected,
+    required bool isDark,
+  }) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: () {
+        if (isSelected) return;
+        setState(() => _selectedCategory = index);
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? _kPrimaryColor
+              : (isDark ? Colors.grey[850] : Colors.white),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: _kPrimaryColor.withValues(alpha: 0.16)),
+        ),
+        child: Text(
+          _categories[index],
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+            color: isSelected
+                ? Colors.black
+                : (isDark ? Colors.grey[200] : Colors.grey[800]),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -117,17 +158,20 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
       appBar: AppBar(
         title: const Text('Discover Events'),
         centerTitle: true,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        shadowColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
         backgroundColor: isDark
-            ? _kBackgroundDark.withValues(alpha: 0.95)
-            : Colors.white,
+            ? _kBackgroundDark.withValues(alpha: 0.84)
+            : Colors.white.withValues(alpha: 0.84),
         foregroundColor: isDark ? Colors.white : Colors.black,
-        elevation: 1,
       ),
       body: SafeArea(
         child: Column(
           children: [
             SizedBox(
-              height: 58,
+              height: 62,
               child: ListView.separated(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
@@ -136,33 +180,13 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
                 scrollDirection: Axis.horizontal,
                 itemBuilder: (context, index) {
                   final isSelected = _selectedCategory == index;
-                  return ChoiceChip(
-                    selected: isSelected,
-                    onSelected: (_) {
-                      setState(() => _selectedCategory = index);
-                    },
-                    label: Text(
-                      _categories[index],
-                      style: TextStyle(
-                        fontWeight: isSelected
-                            ? FontWeight.w800
-                            : FontWeight.w600,
-                        color: isSelected
-                            ? Colors.black
-                            : (isDark ? Colors.grey[200] : Colors.grey[800]),
-                      ),
-                    ),
-                    backgroundColor: isDark ? Colors.grey[850] : Colors.white,
-                    selectedColor: _kPrimaryColor,
-                    side: BorderSide(
-                      color: _kPrimaryColor.withValues(alpha: 0.2),
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(999),
-                    ),
+                  return _categoryChip(
+                    index: index,
+                    isSelected: isSelected,
+                    isDark: isDark,
                   );
                 },
-                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                separatorBuilder: (context, index) => const SizedBox(width: 8),
                 itemCount: _categories.length,
               ),
             ),
@@ -190,7 +214,6 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
                   }
 
                   final events = _filterByCategory(snapshot.data ?? const []);
-
                   if (events.isEmpty) {
                     return Center(
                       child: Padding(
@@ -238,7 +261,8 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
                       child: ListView.separated(
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
                         itemCount: events.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 14),
+                        separatorBuilder: (context, index) =>
+                            const SizedBox(height: 16),
                         itemBuilder: (context, index) {
                           final event = events[index];
                           final title = _asString(
@@ -277,10 +301,6 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
                                 event['bannerUrl'] ??
                                 event['photoUrl'],
                           );
-                          final organizerName = _asString(
-                            event['organizerName'] ?? event['createdByName'],
-                            fallback: 'Organizer',
-                          );
                           final date = _asDate(
                             event['eventDate'] ??
                                 event['date'] ??
@@ -299,15 +319,15 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
                               color: isDark ? Colors.grey[850] : Colors.white,
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
-                                color: _kPrimaryColor.withValues(alpha: 0.1),
+                                color: _kPrimaryColor.withValues(alpha: 0.08),
                               ),
                               boxShadow: [
                                 BoxShadow(
                                   color: Colors.black.withValues(
-                                    alpha: isDark ? 0.2 : 0.05,
+                                    alpha: isDark ? 0.18 : 0.04,
                                   ),
-                                  blurRadius: 14,
-                                  offset: const Offset(0, 6),
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 5),
                                 ),
                               ],
                             ),
@@ -318,9 +338,8 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
                                   borderRadius: const BorderRadius.vertical(
                                     top: Radius.circular(16),
                                   ),
-                                  child: SizedBox(
-                                    height: 190,
-                                    width: double.infinity,
+                                  child: AspectRatio(
+                                    aspectRatio: 16 / 9,
                                     child: Stack(
                                       fit: StackFit.expand,
                                       children: [
@@ -328,12 +347,14 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
                                           Image.network(
                                             imageUrl,
                                             fit: BoxFit.cover,
-                                            errorBuilder: (_, __, ___) =>
-                                                Container(
-                                                  color: isDark
-                                                      ? Colors.grey[800]
-                                                      : Colors.grey[200],
-                                                ),
+                                            errorBuilder:
+                                                (_, error, stackTrace) {
+                                                  return Container(
+                                                    color: isDark
+                                                        ? Colors.grey[800]
+                                                        : Colors.grey[200],
+                                                  );
+                                                },
                                           )
                                         else
                                           Container(
@@ -364,8 +385,8 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
                                             child: Text(
                                               category,
                                               style: const TextStyle(
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.w800,
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w900,
                                                 color: Colors.black,
                                               ),
                                             ),
@@ -384,7 +405,7 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
                                                   (isDark
                                                           ? Colors.black
                                                           : Colors.white)
-                                                      .withValues(alpha: 0.86),
+                                                      .withValues(alpha: 0.9),
                                               borderRadius:
                                                   BorderRadius.circular(10),
                                             ),
@@ -411,7 +432,7 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
                                       Text(
                                         title,
                                         style: TextStyle(
-                                          fontSize: 18,
+                                          fontSize: 19,
                                           fontWeight: FontWeight.w800,
                                           color: isDark
                                               ? Colors.white
@@ -422,9 +443,10 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
                                       Text(
                                         description,
                                         style: TextStyle(
+                                          fontSize: 13,
                                           color: isDark
                                               ? Colors.grey[300]
-                                              : Colors.grey[700],
+                                              : Colors.grey[600],
                                           height: 1.35,
                                         ),
                                       ),
@@ -433,7 +455,7 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
                                         children: [
                                           Icon(
                                             Icons.location_on,
-                                            size: 18,
+                                            size: 17,
                                             color: isDark
                                                 ? Colors.grey[400]
                                                 : Colors.grey[600],
@@ -443,20 +465,21 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
                                             child: Text(
                                               location,
                                               style: TextStyle(
+                                                fontSize: 13,
                                                 color: isDark
                                                     ? Colors.grey[300]
-                                                    : Colors.grey[700],
+                                                    : Colors.grey[600],
                                               ),
                                             ),
                                           ),
                                         ],
                                       ),
-                                      const SizedBox(height: 6),
+                                      const SizedBox(height: 5),
                                       Row(
                                         children: [
                                           Icon(
                                             Icons.calendar_today,
-                                            size: 16,
+                                            size: 15,
                                             color: isDark
                                                 ? Colors.grey[400]
                                                 : Colors.grey[600],
@@ -465,22 +488,13 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
                                           Text(
                                             _formatDate(date),
                                             style: TextStyle(
+                                              fontSize: 13,
                                               color: isDark
                                                   ? Colors.grey[300]
-                                                  : Colors.grey[700],
+                                                  : Colors.grey[600],
                                             ),
                                           ),
                                         ],
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        'Created by: $organizerName',
-                                        style: TextStyle(
-                                          color: isDark
-                                              ? Colors.grey[300]
-                                              : Colors.grey[700],
-                                          fontWeight: FontWeight.w600,
-                                        ),
                                       ),
                                       const SizedBox(height: 14),
                                       Row(
@@ -505,7 +519,7 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
                                                     ),
                                                     alignment: Alignment.center,
                                                     child: Text(
-                                                      '$participants joined',
+                                                      '+$participants',
                                                       style: const TextStyle(
                                                         fontSize: 11,
                                                         fontWeight:
@@ -522,13 +536,13 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
                                                         i++
                                                       )
                                                         Positioned(
-                                                          left: i * 22,
+                                                          left: i * 20,
                                                           child: CircleAvatar(
                                                             radius: 16,
                                                             backgroundColor:
                                                                 isDark
                                                                 ? Colors
-                                                                      .grey[700]
+                                                                      .grey[800]
                                                                 : Colors.white,
                                                             backgroundImage:
                                                                 NetworkImage(
@@ -539,7 +553,7 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
                                                       Positioned(
                                                         left:
                                                             avatars.length *
-                                                            22.0,
+                                                            20.0,
                                                         child: Container(
                                                           width: 32,
                                                           height: 32,
@@ -552,6 +566,14 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
                                                                     ),
                                                             shape:
                                                                 BoxShape.circle,
+                                                            border: Border.all(
+                                                              color: isDark
+                                                                  ? Colors
+                                                                        .grey[850]!
+                                                                  : Colors
+                                                                        .white,
+                                                              width: 2,
+                                                            ),
                                                           ),
                                                           alignment:
                                                               Alignment.center,
@@ -572,7 +594,16 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
                                           ),
                                           const Spacer(),
                                           ElevatedButton(
-                                            onPressed: () {},
+                                            onPressed: () {
+                                              Navigator.of(context).push(
+                                                MaterialPageRoute(
+                                                  builder: (_) =>
+                                                      EventDetailsScreen(
+                                                        eventData: event,
+                                                      ),
+                                                ),
+                                              );
+                                            },
                                             style: ElevatedButton.styleFrom(
                                               backgroundColor: _kPrimaryColor,
                                               foregroundColor: Colors.black,
@@ -581,11 +612,17 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
                                                 borderRadius:
                                                     BorderRadius.circular(10),
                                               ),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 18,
+                                                    vertical: 10,
+                                                  ),
                                             ),
                                             child: const Text(
                                               'View Details',
                                               style: TextStyle(
-                                                fontWeight: FontWeight.w700,
+                                                fontWeight: FontWeight.w800,
+                                                fontSize: 13,
                                               ),
                                             ),
                                           ),
@@ -605,9 +642,27 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
               ),
             ),
             BottomNavigationBar(
-              currentIndex: _selectedBottomNav,
+              currentIndex: 0,
               onTap: (index) {
-                setState(() => _selectedBottomNav = index);
+                if (index == 1) {
+                  Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(builder: (_) => const MyEventsScreen()),
+                  );
+                  return;
+                }
+                if (index == 2) {
+                  Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(builder: (_) => const CommunityScreen()),
+                  );
+                  return;
+                }
+                if (index == 3) {
+                  Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(
+                      builder: (_) => const UserProfileScreen(),
+                    ),
+                  );
+                }
               },
               type: BottomNavigationBarType.fixed,
               selectedItemColor: _kPrimaryColor,
