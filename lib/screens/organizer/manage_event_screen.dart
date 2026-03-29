@@ -1,8 +1,12 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/material.dart';
+import 'dart:io';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+
+import '../../constants/event_categories.dart';
 import '../../services/firebase_service.dart';
-import 'create_event_screen.dart';
 import 'organizer_dashboard_screen.dart';
 
 const _kPrimaryColor = Color(0xFF0DF233);
@@ -29,21 +33,15 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
   late final TextEditingController _pointsController;
   late final TextEditingController _bannerUrlController;
 
-  final List<String> _categories = [
-    'Environment',
-    'Technology',
-    'Education',
-    'Health',
-    'Networking',
-    'Workshop',
-    'Charity',
-    'Volunteering',
-  ];
+  final List<String> _categories = List<String>.from(kOrganizerEventCategories);
 
   late String _selectedCategory;
   DateTime? _selectedDate;
   TimeOfDay? _selectedTime;
   bool _isSaving = false;
+  bool _isUploadingImage = false;
+  final ImagePicker _imagePicker = ImagePicker();
+  late String _originalBannerUrl;
 
   String get _eventId => widget.eventData['id']?.toString() ?? '';
 
@@ -78,12 +76,17 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
       ),
     );
     _pointsController = TextEditingController(
-      text: _asInt(
-        widget.eventData['impactPoints'] ??
-            widget.eventData['points'] ??
-            widget.eventData['rewardPoints'],
-        fallback: 0,
-      ).toString(),
+      text: () {
+        final initial = _asInt(
+          widget.eventData['impactPoints'] ??
+              widget.eventData['points'] ??
+              widget.eventData['rewardPoints'],
+          fallback: 50,
+        );
+        if (initial < 50) return '50';
+        if (initial > 200) return '200';
+        return initial.toString();
+      }(),
     );
     _bannerUrlController = TextEditingController(
       text: _asString(
@@ -92,6 +95,7 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
             widget.eventData['photoUrl'],
       ),
     );
+    _originalBannerUrl = _bannerUrlController.text.trim();
 
     final rawCategory = _asString(widget.eventData['category']);
     if (rawCategory.isNotEmpty && !_categories.contains(rawCategory)) {
@@ -151,6 +155,18 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
     return null;
   }
 
+  bool _isManagedStorageUrl(String url) {
+    return url.contains('/o/event_banners%2F') ||
+        url.contains('/event_banners/');
+  }
+
+  Future<void> _tryDeleteStorageByUrl(String url) async {
+    if (url.isEmpty || !_isManagedStorageUrl(url)) return;
+    try {
+      await FirebaseStorage.instance.refFromURL(url).delete();
+    } catch (_) {}
+  }
+
   Future<void> _pickDate() async {
     final now = DateTime.now();
     final initial = _selectedDate ?? now;
@@ -175,6 +191,86 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
     if (picked != null) {
       setState(() => _selectedTime = picked);
     }
+  }
+
+  Future<void> _pickAndUploadImage(ImageSource source) async {
+    try {
+      final picked = await _imagePicker.pickImage(
+        source: source,
+        imageQuality: 85,
+        maxWidth: 1920,
+      );
+      if (picked == null) return;
+
+      setState(() => _isUploadingImage = true);
+
+      final userId = _firebaseService.currentUser?.uid ?? 'unknown';
+      final fileName =
+          '${DateTime.now().millisecondsSinceEpoch}_${picked.name}';
+      final ref = FirebaseStorage.instance
+          .ref()
+          .child('event_banners')
+          .child(userId)
+          .child(fileName);
+
+      await ref.putFile(File(picked.path));
+      final downloadUrl = await ref.getDownloadURL();
+
+      final currentUrl = _bannerUrlController.text.trim();
+      if (currentUrl.isNotEmpty &&
+          currentUrl != downloadUrl &&
+          currentUrl != _originalBannerUrl) {
+        await _tryDeleteStorageByUrl(currentUrl);
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _bannerUrlController.text = downloadUrl;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Image uploaded successfully.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Image upload failed: $e')));
+    } finally {
+      if (mounted) {
+        setState(() => _isUploadingImage = false);
+      }
+    }
+  }
+
+  Future<void> _showImageSourcePicker() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.photo_library),
+                title: const Text('Choose from Gallery'),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _pickAndUploadImage(ImageSource.gallery);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_camera),
+                title: const Text('Take Photo'),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _pickAndUploadImage(ImageSource.camera);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _saveChanges() async {
@@ -202,6 +298,16 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
       _selectedTime!.minute,
     );
 
+    final points = int.tryParse(_pointsController.text.trim()) ?? 0;
+    if (points < 50 || points > 200) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Reward points must be between 50 and 200.'),
+        ),
+      );
+      return;
+    }
+
     setState(() => _isSaving = true);
     try {
       await FirebaseFirestore.instance
@@ -213,12 +319,20 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
             'title': _eventTitleController.text.trim(),
             'description': _descriptionController.text.trim(),
             'category': _selectedCategory,
-            'impactPoints': int.tryParse(_pointsController.text.trim()) ?? 0,
+            'impactPoints': points,
             'location': _locationController.text.trim(),
             'imageUrl': _bannerUrlController.text.trim(),
             'eventDate': Timestamp.fromDate(selectedDateTime),
             'updatedAt': FieldValue.serverTimestamp(),
           });
+
+      final currentUrl = _bannerUrlController.text.trim();
+      if (_originalBannerUrl.isNotEmpty &&
+          _originalBannerUrl != currentUrl &&
+          _isManagedStorageUrl(_originalBannerUrl)) {
+        await _tryDeleteStorageByUrl(_originalBannerUrl);
+      }
+      _originalBannerUrl = currentUrl;
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -242,7 +356,6 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Scaffold(
       backgroundColor: isDark ? _kBackgroundDark : _kBackgroundLight,
       appBar: AppBar(
@@ -254,7 +367,13 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
         centerTitle: true,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () {
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(
+                builder: (_) => const OrganizerDashboardScreen(),
+              ),
+            );
+          },
         ),
         title: const Text(
           'Edit Event',
@@ -327,7 +446,7 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
                         _label('Points Reward', isDark),
                         _field(
                           controller: _pointsController,
-                          hintText: '20',
+                          hintText: '50 - 200',
                           isDark: isDark,
                           keyboardType: TextInputType.number,
                           suffixIcon: Padding(
@@ -344,8 +463,11 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
                           ),
                           validator: (value) {
                             final points = int.tryParse((value ?? '').trim());
-                            if (points == null || points < 0) {
-                              return 'Invalid';
+                            if (points == null) {
+                              return 'Required';
+                            }
+                            if (points < 50 || points > 200) {
+                              return 'Use 50-200';
                             }
                             return null;
                           },
@@ -379,26 +501,60 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
                   ),
                 ),
                 clipBehavior: Clip.antiAlias,
-                child: Image.network(
-                  'https://lh3.googleusercontent.com/aida-public/AB6AXuBDE6AcMx5b-examgxODuEa_8hoC2vQzHezoIPFOEoQXZbtkk_QtKGaq3p7G5bgylmgSW0gdzKHNQpbfAqtw350O2s7aA9TNq5tQP5Q8BpRMV3ieDtuEAMnDbdbWNArtQfKK6CEs2JfM3YQvkhudM4SLnH3SwPGf9u979GDCAtaY6NogY6-rHhkEaAr_AIMbOZlO_K3XFoGihVdrzurS0sWPPx_CBXixFfh-7ul6iS6dAd_J1GcxYV5ZvfrL8bI7zG7ru4ugl9i7QM',
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, error, stackTrace) {
-                    return Container(
-                      color: isDark
-                          ? Colors.grey.shade900
-                          : Colors.grey.shade100,
-                      alignment: Alignment.center,
-                      child: Text(
-                        'Map preview',
-                        style: TextStyle(
+                child: InkWell(
+                  onTap: _isUploadingImage ? null : _showImageSourcePicker,
+                  child: _isUploadingImage
+                      ? const Center(
+                          child: CircularProgressIndicator(
+                            color: _kPrimaryColor,
+                          ),
+                        )
+                      : _bannerUrlController.text.trim().isNotEmpty
+                      ? Image.network(
+                          _bannerUrlController.text.trim(),
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, error, stackTrace) {
+                            return Container(
+                              color: isDark
+                                  ? Colors.grey.shade900
+                                  : Colors.grey.shade100,
+                              alignment: Alignment.center,
+                              child: Text(
+                                'Image unavailable',
+                                style: TextStyle(
+                                  color: isDark
+                                      ? Colors.grey.shade400
+                                      : Colors.grey.shade600,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            );
+                          },
+                        )
+                      : Container(
                           color: isDark
-                              ? Colors.grey.shade400
-                              : Colors.grey.shade600,
-                          fontWeight: FontWeight.w600,
+                              ? Colors.grey.shade900
+                              : Colors.grey.shade100,
+                          alignment: Alignment.center,
+                          child: Text(
+                            'Tap to upload banner image',
+                            style: TextStyle(
+                              color: isDark
+                                  ? Colors.grey.shade400
+                                  : Colors.grey.shade600,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ),
-                      ),
-                    );
-                  },
+                ),
+              ),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: _isUploadingImage ? null : _showImageSourcePicker,
+                  icon: const Icon(Icons.upload),
+                  label: const Text('Upload Image'),
                 ),
               ),
               const SizedBox(height: 12),
@@ -477,47 +633,6 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
             ],
           ),
         ),
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: 0,
-        onTap: (index) {
-          if (index == 0) {
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(
-                builder: (_) => const OrganizerDashboardScreen(),
-              ),
-            );
-            return;
-          }
-
-          if (index == 1) {
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(builder: (_) => const CreateEventScreen()),
-            );
-            return;
-          }
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Participants screen coming soon.')),
-          );
-        },
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: _kPrimaryColor,
-        unselectedItemColor: isDark
-            ? Colors.grey.shade500
-            : Colors.grey.shade700,
-        backgroundColor: isDark ? Colors.grey.shade900 : Colors.white,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Dashboard'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.add_circle),
-            label: 'Create Event',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.people),
-            label: 'Participants',
-          ),
-        ],
       ),
     );
   }

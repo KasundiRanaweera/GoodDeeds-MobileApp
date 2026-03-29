@@ -1,8 +1,14 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/material.dart';
+import 'dart:io';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+
+import '../../constants/event_categories.dart';
 import '../../services/firebase_service.dart';
 import 'organizer_dashboard_screen.dart';
+import 'organizer_profile_screen.dart';
 
 const _kPrimaryColor = Color(0xFF0DF233);
 const _kBackgroundLight = Color(0xFFF8F6F6);
@@ -21,34 +27,46 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
 
   final TextEditingController _organizerNameController =
       TextEditingController();
+  final TextEditingController _contactNumberController =
+      TextEditingController();
   final TextEditingController _eventTitleController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
   final TextEditingController _locationController = TextEditingController();
   final TextEditingController _pointsController = TextEditingController();
   final TextEditingController _bannerUrlController = TextEditingController();
 
-  final List<String> _categories = const [
-    'Technology',
-    'Education',
-    'Networking',
-    'Workshop',
-  ];
+  final List<String> _categories = List<String>.from(kOrganizerEventCategories);
 
-  String _selectedCategory = 'Technology';
+  String _selectedCategory = kOrganizerEventCategories.first;
   DateTime? _selectedDateTime;
   bool _isSubmitting = false;
+  bool _isUploadingImage = false;
+  final ImagePicker _imagePicker = ImagePicker();
+
+  bool _isManagedStorageUrl(String url) {
+    return url.contains('/o/event_banners%2F') ||
+        url.contains('/event_banners/');
+  }
+
+  Future<void> _tryDeleteStorageByUrl(String url) async {
+    if (url.isEmpty || !_isManagedStorageUrl(url)) return;
+    try {
+      await FirebaseStorage.instance.refFromURL(url).delete();
+    } catch (_) {}
+  }
 
   @override
   void initState() {
     super.initState();
     final displayName = _firebaseService.currentUser?.displayName?.trim() ?? '';
     _organizerNameController.text = displayName;
-    _pointsController.text = '10';
+    _pointsController.text = '50';
   }
 
   @override
   void dispose() {
     _organizerNameController.dispose();
+    _contactNumberController.dispose();
     _eventTitleController.dispose();
     _descriptionController.dispose();
     _locationController.dispose();
@@ -87,6 +105,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   }
 
   Future<void> _promptBannerUrl() async {
+    final currentUrl = _bannerUrlController.text.trim();
     final controller = TextEditingController(text: _bannerUrlController.text);
     final result = await showDialog<String>(
       context: context,
@@ -119,10 +138,100 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     );
 
     if (result != null) {
+      final nextUrl = result.trim();
+      if (currentUrl.isNotEmpty && currentUrl != nextUrl) {
+        await _tryDeleteStorageByUrl(currentUrl);
+      }
       setState(() {
-        _bannerUrlController.text = result.trim();
+        _bannerUrlController.text = nextUrl;
       });
     }
+  }
+
+  Future<void> _pickAndUploadImage(ImageSource source) async {
+    try {
+      final picked = await _imagePicker.pickImage(
+        source: source,
+        imageQuality: 85,
+        maxWidth: 1920,
+      );
+      if (picked == null) return;
+
+      setState(() => _isUploadingImage = true);
+
+      final userId = _firebaseService.currentUser?.uid ?? 'unknown';
+      final fileName =
+          '${DateTime.now().millisecondsSinceEpoch}_${picked.name}';
+      final ref = FirebaseStorage.instance
+          .ref()
+          .child('event_banners')
+          .child(userId)
+          .child(fileName);
+
+      await ref.putFile(File(picked.path));
+      final downloadUrl = await ref.getDownloadURL();
+
+      final currentUrl = _bannerUrlController.text.trim();
+      if (currentUrl.isNotEmpty && currentUrl != downloadUrl) {
+        await _tryDeleteStorageByUrl(currentUrl);
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _bannerUrlController.text = downloadUrl;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Image uploaded successfully.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Image upload failed: $e')));
+    } finally {
+      if (mounted) {
+        setState(() => _isUploadingImage = false);
+      }
+    }
+  }
+
+  Future<void> _showImageSourcePicker() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.photo_library),
+                title: const Text('Choose from Gallery'),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _pickAndUploadImage(ImageSource.gallery);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_camera),
+                title: const Text('Take Photo'),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _pickAndUploadImage(ImageSource.camera);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.link),
+                title: const Text('Use Image URL Instead'),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _promptBannerUrl();
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   String _dateTimeLabel() {
@@ -172,6 +281,15 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     setState(() => _isSubmitting = true);
     try {
       final points = int.tryParse(_pointsController.text.trim()) ?? 0;
+      if (points < 50 || points > 200) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Reward points must be between 50 and 200.'),
+          ),
+        );
+        return;
+      }
       final data = <String, dynamic>{
         'title': _eventTitleController.text.trim(),
         'description': _descriptionController.text.trim(),
@@ -181,6 +299,8 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         'eventDate': Timestamp.fromDate(_selectedDateTime!),
         'imageUrl': _bannerUrlController.text.trim(),
         'organizerName': _organizerNameController.text.trim(),
+        'contactNumber': _contactNumberController.text.trim(),
+        'organizerContactNumber': _contactNumberController.text.trim(),
         'createdByUid': user.uid,
         'createdByName': _organizerNameController.text.trim(),
         'participantsCount': 0,
@@ -218,13 +338,22 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     return Scaffold(
       backgroundColor: isDark ? _kBackgroundDark : _kBackgroundLight,
       appBar: AppBar(
-        title: const Text(
-          'Create Event',
-          style: TextStyle(fontWeight: FontWeight.w800),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Icon(Icons.add_circle_outline, color: _kPrimaryColor),
+            SizedBox(width: 8),
+            Text('Create Event', style: TextStyle(fontWeight: FontWeight.w800)),
+          ],
         ),
         centerTitle: true,
         elevation: 0,
-        backgroundColor: isDark ? _kBackgroundDark : _kBackgroundLight,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.transparent,
+        backgroundColor: isDark
+            ? _kBackgroundDark.withValues(alpha: 0.84)
+            : Colors.white.withValues(alpha: 0.86),
         foregroundColor: isDark ? Colors.white : Colors.black,
       ),
       body: SafeArea(
@@ -239,7 +368,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               ),
               const SizedBox(height: 8),
               InkWell(
-                onTap: _promptBannerUrl,
+                onTap: _isUploadingImage ? null : _showImageSourcePicker,
                 borderRadius: BorderRadius.circular(14),
                 child: Container(
                   height: 190,
@@ -251,7 +380,13 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                     ),
                     color: _kPrimaryColor.withValues(alpha: 0.06),
                   ),
-                  child: _bannerUrlController.text.trim().isNotEmpty
+                  child: _isUploadingImage
+                      ? const Center(
+                          child: CircularProgressIndicator(
+                            color: _kPrimaryColor,
+                          ),
+                        )
+                      : _bannerUrlController.text.trim().isNotEmpty
                       ? ClipRRect(
                           borderRadius: BorderRadius.circular(12),
                           child: Image.network(
@@ -266,6 +401,31 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                 ),
               ),
               const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _bannerUrlController.text.trim().isEmpty
+                          ? 'Tap banner area to upload event image'
+                          : 'Banner image uploaded',
+                      style: TextStyle(
+                        color: isDark
+                            ? Colors.grey.shade300
+                            : Colors.grey.shade700,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: _isUploadingImage
+                        ? null
+                        : _showImageSourcePicker,
+                    icon: const Icon(Icons.upload),
+                    label: const Text('Upload'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
               _label('Organizer Name'),
               _field(
                 controller: _organizerNameController,
@@ -273,6 +433,20 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                 validator: (value) {
                   if ((value ?? '').trim().isEmpty) {
                     return 'Organizer name is required';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              _label('Contact Number'),
+              _field(
+                controller: _contactNumberController,
+                hintText: 'e.g. 0123456789',
+                keyboardType: TextInputType.phone,
+                suffixIcon: const Icon(Icons.phone, color: _kPrimaryColor),
+                validator: (value) {
+                  if ((value ?? '').trim().isEmpty) {
+                    return 'Contact number is required';
                   }
                   return null;
                 },
@@ -353,7 +527,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                         _label('Points Reward'),
                         _field(
                           controller: _pointsController,
-                          hintText: '0',
+                          hintText: '50 - 200',
                           keyboardType: TextInputType.number,
                           suffixIcon: const Icon(
                             Icons.stars,
@@ -361,8 +535,11 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                           ),
                           validator: (value) {
                             final points = int.tryParse((value ?? '').trim());
-                            if (points == null || points < 0) {
-                              return 'Invalid';
+                            if (points == null) {
+                              return 'Required';
+                            }
+                            if (points < 50 || points > 200) {
+                              return 'Use 50-200';
                             }
                             return null;
                           },
@@ -471,6 +648,13 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                 builder: (_) => const OrganizerDashboardScreen(),
               ),
             );
+            return;
+          }
+
+          if (index == 2) {
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (_) => const OrganizerProfileScreen()),
+            );
           }
         },
         type: BottomNavigationBarType.fixed,
@@ -485,6 +669,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
             icon: Icon(Icons.add_circle),
             label: 'Create',
           ),
+          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
         ],
       ),
     );

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../constants/event_categories.dart';
 import '../../services/firebase_service.dart';
+import 'user_profile_screen.dart';
 
 const _kPrimaryColor = Color(0xFF0DF233);
 const _kBackgroundLight = Color(0xFFF8F6F6);
@@ -14,13 +16,7 @@ class DiscoverEventsScreen extends StatefulWidget {
 
 class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
   final FirebaseService _firebaseService = FirebaseService();
-  final List<String> _categories = const [
-    'All',
-    'Environment',
-    'Education',
-    'Community',
-    'Charity',
-  ];
+  final List<String> _categories = kDiscoverEventCategories;
   int _selectedCategory = 0;
   int _selectedBottomNav = 0;
 
@@ -265,7 +261,7 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
                             event['category'] ??
                                 event['type'] ??
                                 event['eventCategory'],
-                            fallback: 'Volunteering',
+                            fallback: 'Community',
                           );
                           final impactPoints = _asInt(
                             event['impactPoints'] ??
@@ -609,6 +605,14 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
             BottomNavigationBar(
               currentIndex: _selectedBottomNav,
               onTap: (index) {
+                if (index == 3) {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const UserProfileScreen(),
+                    ),
+                  );
+                  return;
+                }
                 setState(() => _selectedBottomNav = index);
               },
               type: BottomNavigationBarType.fixed,

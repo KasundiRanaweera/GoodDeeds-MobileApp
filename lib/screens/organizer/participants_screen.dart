@@ -1,7 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
-import 'create_event_screen.dart';
 import 'organizer_dashboard_screen.dart';
 
 const _kPrimaryColor = Color(0xFF0DF233);
@@ -56,6 +55,27 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
     return const [];
   }
 
+  int _asInt(dynamic value, {int fallback = 0}) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '') ?? fallback;
+  }
+
+  DateTime? _asDate(dynamic value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    if (value is String) return DateTime.tryParse(value);
+    return null;
+  }
+
+  bool _isEventCompleted(Map<String, dynamic> eventData) {
+    final eventDate = _asDate(
+      eventData['eventDate'] ?? eventData['date'] ?? eventData['startDate'],
+    );
+    if (eventDate == null) return false;
+    return DateTime.now().isAfter(eventDate);
+  }
+
   Future<List<_ParticipantVm>> _loadParticipants(
     List<String> participantIds,
   ) async {
@@ -97,13 +117,64 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
       if (!snap.exists) return;
       final data = snap.data() ?? <String, dynamic>{};
       final checkedInIds = _asStringList(data['checkedInIds']).toSet();
+      final awardedParticipantIds = _asStringList(
+        data['awardedParticipantIds'],
+      ).toSet();
+      final eventCompleted = _isEventCompleted(data);
+      final impactPoints = _asInt(
+        data['impactPoints'] ?? data['points'] ?? data['rewardPoints'],
+      );
+
+      final userRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(participantUid);
+      final userSnap = await tx.get(userRef);
+      final userData = userSnap.data() ?? <String, dynamic>{};
+      final currentPoints = _asInt(
+        userData['impactPoints'] ??
+            userData['totalPoints'] ??
+            userData['rewardPoints'] ??
+            userData['points'],
+      );
+
       if (checkedIn) {
+        if (!eventCompleted) {
+          return;
+        }
         checkedInIds.add(participantUid);
+        if (!awardedParticipantIds.contains(participantUid) &&
+            impactPoints > 0) {
+          final updatedPoints = currentPoints + impactPoints;
+          tx.set(userRef, {
+            'impactPoints': updatedPoints,
+            'totalPoints': updatedPoints,
+            'rewardPoints': updatedPoints,
+            'points': updatedPoints,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+          awardedParticipantIds.add(participantUid);
+        }
       } else {
         checkedInIds.remove(participantUid);
+        if (awardedParticipantIds.contains(participantUid) &&
+            impactPoints > 0) {
+          final updatedPoints = (currentPoints - impactPoints).clamp(
+            0,
+            1000000000,
+          );
+          tx.set(userRef, {
+            'impactPoints': updatedPoints,
+            'totalPoints': updatedPoints,
+            'rewardPoints': updatedPoints,
+            'points': updatedPoints,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+          awardedParticipantIds.remove(participantUid);
+        }
       }
       tx.update(eventRef, {
         'checkedInIds': checkedInIds.toList(),
+        'awardedParticipantIds': awardedParticipantIds.toList(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
     });
@@ -122,14 +193,49 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
       final data = snap.data() ?? <String, dynamic>{};
       final participantIds = _asStringList(data['participantIds']).toSet();
       final checkedInIds = _asStringList(data['checkedInIds']).toSet();
+      final awardedParticipantIds = _asStringList(
+        data['awardedParticipantIds'],
+      ).toSet();
+      final impactPoints = _asInt(
+        data['impactPoints'] ?? data['points'] ?? data['rewardPoints'],
+      );
 
       participantIds.remove(participantUid);
       checkedInIds.remove(participantUid);
+
+      if (awardedParticipantIds.contains(participantUid) && impactPoints > 0) {
+        final userRef = FirebaseFirestore.instance
+            .collection('users')
+            .doc(participantUid);
+        final userSnap = await tx.get(userRef);
+        final userData = userSnap.data() ?? <String, dynamic>{};
+        final currentPoints = _asInt(
+          userData['impactPoints'] ??
+              userData['totalPoints'] ??
+              userData['rewardPoints'] ??
+              userData['points'],
+        );
+        final updatedPoints = (currentPoints - impactPoints).clamp(
+          0,
+          1000000000,
+        );
+
+        tx.set(userRef, {
+          'impactPoints': updatedPoints,
+          'totalPoints': updatedPoints,
+          'rewardPoints': updatedPoints,
+          'points': updatedPoints,
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+
+        awardedParticipantIds.remove(participantUid);
+      }
 
       tx.update(eventRef, {
         'participantIds': participantIds.toList(),
         'participantsCount': participantIds.length,
         'checkedInIds': checkedInIds.toList(),
+        'awardedParticipantIds': awardedParticipantIds.toList(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
     });
@@ -144,6 +250,16 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
       return Scaffold(
         backgroundColor: isDark ? _kBackgroundDark : _kBackgroundLight,
         appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () {
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(
+                  builder: (_) => const OrganizerDashboardScreen(),
+                ),
+              );
+            },
+          ),
           title: const Text('Participants'),
           centerTitle: true,
           backgroundColor: isDark ? _kBackgroundDark : _kBackgroundLight,
@@ -169,6 +285,16 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
     return Scaffold(
       backgroundColor: isDark ? _kBackgroundDark : _kBackgroundLight,
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(
+                builder: (_) => const OrganizerDashboardScreen(),
+              ),
+            );
+          },
+        ),
         title: const Text(
           'Participants',
           style: TextStyle(fontWeight: FontWeight.w800),
@@ -209,6 +335,7 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
 
           final eventData = eventSnapshot.data!.data() ?? <String, dynamic>{};
           final liveEventTitle = _eventTitleFromData(eventData);
+          final eventCompleted = _isEventCompleted(eventData);
           final participantIds = _asStringList(eventData['participantIds']);
           final checkedInIds = _asStringList(eventData['checkedInIds']).toSet();
 
@@ -250,6 +377,26 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                         ),
                       ),
                       const SizedBox(height: 8),
+                      if (!eventCompleted)
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? Colors.orange.withValues(alpha: 0.18)
+                                : Colors.orange.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            'Attendance can be marked only after the event date.',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: isDark
+                                  ? Colors.orange.shade200
+                                  : Colors.orange.shade800,
+                            ),
+                          ),
+                        ),
                       Container(
                         height: 48,
                         decoration: BoxDecoration(
@@ -512,6 +659,18 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                                   if (isCheckedIn)
                                     TextButton(
                                       onPressed: () async {
+                                        if (!eventCompleted) {
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
+                                            const SnackBar(
+                                              content: Text(
+                                                'Attendance can be updated after the event is completed.',
+                                              ),
+                                            ),
+                                          );
+                                          return;
+                                        }
                                         await _setCheckedIn(
                                           eventId: eventId,
                                           participantUid: participant.uid,
@@ -532,6 +691,18 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                                       children: [
                                         InkWell(
                                           onTap: () async {
+                                            if (!eventCompleted) {
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                const SnackBar(
+                                                  content: Text(
+                                                    'Attendance can be updated after the event is completed.',
+                                                  ),
+                                                ),
+                                              );
+                                              return;
+                                            }
                                             await _setCheckedIn(
                                               eventId: eventId,
                                               participantUid: participant.uid,
@@ -596,7 +767,7 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                     ],
                   ),
                   Positioned(
-                    bottom: 88,
+                    bottom: 18,
                     right: 18,
                     child: FloatingActionButton(
                       backgroundColor: _kPrimaryColor,
@@ -618,43 +789,6 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
             },
           );
         },
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: 2,
-        onTap: (index) {
-          if (index == 0) {
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(
-                builder: (_) => const OrganizerDashboardScreen(),
-              ),
-            );
-            return;
-          }
-
-          if (index == 1) {
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(builder: (_) => const CreateEventScreen()),
-            );
-            return;
-          }
-        },
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: _kPrimaryColor,
-        unselectedItemColor: isDark
-            ? Colors.grey.shade500
-            : Colors.grey.shade700,
-        backgroundColor: isDark ? Colors.grey.shade900 : Colors.white,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Dashboard'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.add_circle),
-            label: 'Create Event',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.people),
-            label: 'Participants',
-          ),
-        ],
       ),
     );
   }
