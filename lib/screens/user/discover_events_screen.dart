@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../constants/event_categories.dart';
 import '../../services/firebase_service.dart';
+import '../../widgets/safe_avatar.dart';
 import 'community_screen.dart';
 import 'event_details_screen.dart';
 import 'my_events_screen.dart';
@@ -266,13 +267,6 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
                                 event['name'],
                             fallback: 'Untitled Event',
                           );
-                          final description = _asString(
-                            event['description'] ??
-                                event['details'] ??
-                                event['about'],
-                            fallback:
-                                'Join this community event and make an impact.',
-                          );
                           final location = _asString(
                             event['location'] ??
                                 event['venue'] ??
@@ -468,19 +462,6 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
                                         maxLines: 2,
                                         overflow: TextOverflow.ellipsis,
                                       ),
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        description,
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          color: isDark
-                                              ? Colors.grey[350]
-                                              : Colors.grey[700],
-                                          height: 1.45,
-                                        ),
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
                                       const SizedBox(height: 14),
                                       Container(
                                         padding: const EdgeInsets.symmetric(
@@ -615,17 +596,21 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
                                                       )
                                                         Positioned(
                                                           left: i * 20,
-                                                          child: CircleAvatar(
+                                                          child: SafeAvatar(
                                                             radius: 16,
                                                             backgroundColor:
                                                                 isDark
-                                                                ? Colors
-                                                                      .grey[800]
+                                                                ? Colors.grey[800] ??
+                                                                      Colors
+                                                                          .grey
                                                                 : Colors.white,
-                                                            backgroundImage:
-                                                                NetworkImage(
-                                                                  avatars[i],
-                                                                ),
+                                                            imageUrl:
+                                                                avatars[i],
+                                                            iconColor: isDark
+                                                                ? Colors
+                                                                      .grey[400]!
+                                                                : Colors
+                                                                      .grey[600]!,
                                                           ),
                                                         ),
                                                       Positioned(

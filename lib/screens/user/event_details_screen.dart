@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../services/firebase_service.dart';
 import 'discover_events_screen.dart';
 import 'community_screen.dart';
@@ -9,11 +10,67 @@ const _kPrimaryColor = Color(0xFF0DF233);
 const _kBackgroundLight = Color(0xFFF8F6F6);
 const _kBackgroundDark = Color(0xFF221610);
 
-class EventDetailsScreen extends StatelessWidget {
+class EventDetailsScreen extends StatefulWidget {
   const EventDetailsScreen({super.key, required this.eventData});
 
   final Map<String, dynamic> eventData;
+
+  @override
+  State<EventDetailsScreen> createState() => _EventDetailsScreenState();
+}
+
+class _EventDetailsScreenState extends State<EventDetailsScreen> {
   FirebaseService get _firebaseService => FirebaseService();
+  bool _isJoining = false;
+  late bool _hasJoined;
+
+  @override
+  void initState() {
+    super.initState();
+    _hasJoined = _computeInitialJoined();
+    _syncJoinedStatus();
+  }
+
+  Future<void> _syncJoinedStatus() async {
+    final eventId = _eventId();
+    final currentUserId = _firebaseService.currentUser?.uid;
+    if (eventId.isEmpty || currentUserId == null || currentUserId.isEmpty) {
+      return;
+    }
+
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('events')
+          .doc(eventId)
+          .get();
+      if (!mounted || !snapshot.exists) return;
+
+      final data = snapshot.data() ?? <String, dynamic>{};
+      final participantIds =
+          (data['participantIds'] as List<dynamic>? ?? const [])
+              .map((e) => e.toString())
+              .toList();
+      final joined = participantIds.contains(currentUserId);
+
+      if (_hasJoined != joined) {
+        setState(() => _hasJoined = joined);
+      }
+    } catch (_) {
+      // Keep existing local state if remote sync fails.
+    }
+  }
+
+  bool _computeInitialJoined() {
+    final currentUserId = _firebaseService.currentUser?.uid;
+    if (currentUserId == null || currentUserId.isEmpty) return false;
+
+    final participantIds =
+        (widget.eventData['participantIds'] as List<dynamic>? ?? const [])
+            .map((e) => e.toString())
+            .toList();
+
+    return participantIds.contains(currentUserId);
+  }
 
   String _asString(dynamic value, {String fallback = ''}) {
     if (value == null) return fallback;
@@ -69,10 +126,29 @@ class EventDetailsScreen extends StatelessWidget {
   }
 
   String _eventId() {
-    return _asString(eventData['id'] ?? eventData['eventId']);
+    return _asString(widget.eventData['id'] ?? widget.eventData['eventId']);
+  }
+
+  bool _canManageJoin() {
+    final eventDate = _asDate(
+      widget.eventData['eventDate'] ??
+          widget.eventData['date'] ??
+          widget.eventData['startDate'],
+    );
+    if (eventDate == null) return true;
+    return eventDate.isAfter(DateTime.now());
   }
 
   Future<void> _onJoinEvent(BuildContext context) async {
+    if (_hasJoined || _isJoining) return;
+
+    if (!_canManageJoin()) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('This event has expired.')));
+      return;
+    }
+
     final eventId = _eventId();
     if (eventId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -81,14 +157,35 @@ class EventDetailsScreen extends StatelessWidget {
       return;
     }
 
+    setState(() => _isJoining = true);
+
     try {
       await _firebaseService.joinEvent(eventId: eventId);
       if (!context.mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Joined successfully!')));
+      setState(() {
+        _hasJoined = true;
+        _isJoining = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            'Joined successfully!',
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
+          backgroundColor: const Color.fromARGB(255, 38, 128, 53),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(milliseconds: 900),
+        ),
+      );
+
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      if (!context.mounted) return;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const MyEventsScreen()),
+      );
     } catch (e) {
       if (!context.mounted) return;
+      setState(() => _isJoining = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Could not join event: ${e.toString()}')),
       );
@@ -101,42 +198,47 @@ class EventDetailsScreen extends StatelessWidget {
     final background = isDark ? _kBackgroundDark : _kBackgroundLight;
 
     final title = _asString(
-      eventData['title'] ?? eventData['eventName'] ?? eventData['name'],
+      widget.eventData['title'] ??
+          widget.eventData['eventName'] ??
+          widget.eventData['name'],
       fallback: 'Event Details',
     );
     final description = _asString(
-      eventData['description'] ?? eventData['details'] ?? eventData['about'],
+      widget.eventData['description'] ??
+          widget.eventData['details'] ??
+          widget.eventData['about'],
       fallback: 'No event description available yet.',
     );
     final location = _asString(
-      eventData['location'] ?? eventData['venue'] ?? eventData['address'],
+      widget.eventData['location'] ??
+          widget.eventData['venue'] ??
+          widget.eventData['address'],
       fallback: 'Location to be announced',
     );
     final organizerName = _asString(
-      eventData['organizerName'] ?? eventData['createdByName'],
+      widget.eventData['organizerName'] ?? widget.eventData['createdByName'],
       fallback: 'Organizer',
     );
     final contactNumber = _asString(
-      eventData['contactNumber'] ?? eventData['organizerPhone'],
+      widget.eventData['contactNumber'] ?? widget.eventData['organizerPhone'],
     );
     final imageUrl = _asString(
-      eventData['imageUrl'] ?? eventData['bannerUrl'] ?? eventData['photoUrl'],
+      widget.eventData['imageUrl'] ??
+          widget.eventData['bannerUrl'] ??
+          widget.eventData['photoUrl'],
     );
     final points = _asInt(
-      eventData['impactPoints'] ??
-          eventData['points'] ??
-          eventData['rewardPoints'],
+      widget.eventData['impactPoints'] ??
+          widget.eventData['points'] ??
+          widget.eventData['rewardPoints'],
       fallback: 10,
     );
-    final joined = _asInt(
-      eventData['participantsCount'] ??
-          eventData['volunteerCount'] ??
-          eventData['joinedCount'],
-      fallback: 0,
-    );
     final eventDate = _asDate(
-      eventData['eventDate'] ?? eventData['date'] ?? eventData['startDate'],
+      widget.eventData['eventDate'] ??
+          widget.eventData['date'] ??
+          widget.eventData['startDate'],
     );
+    final canJoinNow = eventDate == null || eventDate.isAfter(DateTime.now());
 
     return Scaffold(
       backgroundColor: background,
@@ -161,16 +263,7 @@ class EventDetailsScreen extends StatelessWidget {
             ? _kBackgroundDark.withValues(alpha: 0.84)
             : Colors.white.withValues(alpha: 0.86),
         foregroundColor: isDark ? Colors.white : Colors.black,
-        actions: [
-          IconButton(
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Share coming soon')),
-              );
-            },
-            icon: const Icon(Icons.share),
-          ),
-        ],
+        actions: const [],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -470,16 +563,6 @@ class EventDetailsScreen extends StatelessWidget {
                                             : Colors.black,
                                       ),
                                     ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      'Location details available in app maps',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        color: isDark
-                                            ? Colors.grey[400]
-                                            : Colors.grey[600],
-                                      ),
-                                    ),
                                   ],
                                 ),
                               ),
@@ -644,7 +727,7 @@ class EventDetailsScreen extends StatelessWidget {
                                     ),
                                     const SizedBox(height: 2),
                                     Text(
-                                      'Earn points for volunteering',
+                                      'Earn points from volunteering',
                                       style: TextStyle(
                                         fontSize: 12,
                                         color: isDark
@@ -665,9 +748,9 @@ class EventDetailsScreen extends StatelessWidget {
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Text(
-                                  '+$points Pts',
+                                  '+$points Points',
                                   style: const TextStyle(
-                                    color: _kPrimaryColor,
+                                    color: Color.fromARGB(255, 5, 192, 36),
                                     fontWeight: FontWeight.w900,
                                     fontSize: 14,
                                   ),
@@ -700,40 +783,51 @@ class EventDetailsScreen extends StatelessWidget {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: () => _onJoinEvent(context),
+                      onPressed: (_hasJoined || _isJoining || !canJoinNow)
+                          ? null
+                          : () => _onJoinEvent(context),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: _kPrimaryColor,
-                        foregroundColor: Colors.black,
-                        padding: const EdgeInsets.symmetric(vertical: 15),
+                        backgroundColor: _hasJoined
+                            ? const Color(0xFFD6DDD8)
+                            : (!canJoinNow
+                                  ? (isDark
+                                        ? Colors.grey.shade700
+                                        : Colors.grey.shade400)
+                                  : _kPrimaryColor),
+                        foregroundColor: _hasJoined
+                            ? Colors.black
+                            : (!canJoinNow ? Colors.white : Colors.black),
+                        disabledBackgroundColor: _hasJoined
+                            ? const Color(0xFFD6DDD8)
+                            : (!canJoinNow
+                                  ? (isDark
+                                        ? Colors.grey.shade700
+                                        : Colors.grey.shade400)
+                                  : _kPrimaryColor.withValues(alpha: 0.65)),
+                        disabledForegroundColor: _hasJoined
+                            ? Colors.black
+                            : (!canJoinNow ? Colors.white : Colors.black),
+                        minimumSize: const Size.fromHeight(63),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      child: const Text(
-                        'Join Event',
-                        style: TextStyle(fontWeight: FontWeight.w800),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(
-                        Icons.check_circle,
-                        color: _kPrimaryColor,
-                        size: 18,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        '${joined > 0 ? joined : 1200} people are joining',
-                        style: const TextStyle(
-                          color: _kPrimaryColor,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12,
+                      child: Text(
+                        _hasJoined
+                            ? 'Joined'
+                            : (_isJoining
+                                  ? 'Joining...'
+                                  : (canJoinNow
+                                        ? 'Join Event'
+                                        : 'Event Expired')),
+                        style: TextStyle(
+                          fontWeight: _hasJoined
+                              ? FontWeight.w900
+                              : FontWeight.w800,
                         ),
                       ),
-                    ],
+                    ),
                   ),
                 ],
               ),

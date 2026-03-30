@@ -20,17 +20,60 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
   final FirebaseService _firebaseService = FirebaseService();
   final List<String> _tabs = const ['All', 'Upcoming', 'Past'];
   int _selectedTab = 0;
+  final Set<String> _leavingEventIds = <String>{};
+  final Set<String> _hiddenEventIds = <String>{};
+
+  Future<bool> _confirmLeaveEvent(BuildContext context) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Confirm'),
+          content: const Text('Are you sure you want to unjoin this event?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('No'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Yes'),
+            ),
+          ],
+        );
+      },
+    );
+
+    return result ?? false;
+  }
+
+  Future<void> _leaveEvent(BuildContext context, String eventId) async {
+    if (eventId.isEmpty || _leavingEventIds.contains(eventId)) return;
+
+    setState(() => _leavingEventIds.add(eventId));
+    try {
+      await _firebaseService.leaveEvent(eventId: eventId);
+      if (!context.mounted) return;
+      setState(() => _hiddenEventIds.add(eventId));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Event removed from My Events.')),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not update event: $e')));
+    } finally {
+      if (mounted) {
+        setState(() => _leavingEventIds.remove(eventId));
+      }
+    }
+  }
 
   String _asString(dynamic value, {String fallback = ''}) {
     if (value == null) return fallback;
     final text = value.toString().trim();
     return text.isEmpty ? fallback : text;
-  }
-
-  int _asInt(dynamic value, {int fallback = 0}) {
-    if (value is int) return value;
-    if (value is num) return value.toInt();
-    return int.tryParse(value?.toString() ?? '') ?? fallback;
   }
 
   DateTime? _asDate(dynamic value) {
@@ -73,33 +116,37 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
   List<Map<String, dynamic>> _filteredEvents(
     List<Map<String, dynamic>> events,
   ) {
-    if (_selectedTab == 0) return events;
+    List<Map<String, dynamic>> filtered;
+    if (_selectedTab == 0) {
+      filtered = List<Map<String, dynamic>>.from(events);
+    } else {
+      final now = DateTime.now();
+      final isUpcomingTab = _selectedTab == 1;
 
-    final now = DateTime.now();
-    final isUpcomingTab = _selectedTab == 1;
+      filtered = events.where((event) {
+        final date = _asDate(
+          event['eventDate'] ?? event['date'] ?? event['startDate'],
+        );
+        if (date == null) return isUpcomingTab;
+        final isPast = date.isBefore(now);
+        return isUpcomingTab ? !isPast : isPast;
+      }).toList();
+    }
 
-    return events.where((event) {
-      final date = _asDate(
-        event['eventDate'] ?? event['date'] ?? event['startDate'],
+    filtered.sort((a, b) {
+      final aAddedAt = _asDate(
+        a['createdAt'] ?? a['joinedAt'] ?? a['updatedAt'] ?? a['eventDate'],
       );
-      if (date == null) return isUpcomingTab;
-      final isPast = date.isBefore(now);
-      return isUpcomingTab ? !isPast : isPast;
-    }).toList();
-  }
+      final bAddedAt = _asDate(
+        b['createdAt'] ?? b['joinedAt'] ?? b['updatedAt'] ?? b['eventDate'],
+      );
+      if (aAddedAt == null && bAddedAt == null) return 0;
+      if (aAddedAt == null) return 1;
+      if (bAddedAt == null) return -1;
+      return bAddedAt.compareTo(aAddedAt);
+    });
 
-  bool _isAttended(Map<String, dynamic> event, String uid) {
-    final attendedIds = (event['attendedUserIds'] as List<dynamic>? ?? const [])
-        .map((e) => e.toString())
-        .toSet();
-
-    if (attendedIds.contains(uid)) return true;
-
-    final attendanceMap = event['attendanceByUser'];
-    if (attendanceMap is Map && attendanceMap[uid] == true) return true;
-
-    final status = _asString(event['attendanceStatus']).toLowerCase();
-    return status == 'attended';
+    return filtered;
   }
 
   String _statusForEvent(Map<String, dynamic> event, String uid) {
@@ -107,14 +154,14 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
       event['eventDate'] ?? event['date'] ?? event['startDate'],
     );
     if (date == null || date.isAfter(DateTime.now())) return 'Joined';
-    return _isAttended(event, uid) ? 'Attended' : 'Absent';
+    return 'Completed';
   }
 
   Color _statusBackground(String status, bool isDark) {
     switch (status) {
       case 'Joined':
         return _kPrimaryColor.withValues(alpha: 0.15);
-      case 'Attended':
+      case 'Completed':
         return _kPrimaryColor.withValues(alpha: isDark ? 0.12 : 0.2);
       default:
         return isDark ? Colors.grey.shade800 : Colors.grey.shade200;
@@ -125,7 +172,7 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
     switch (status) {
       case 'Joined':
         return _kPrimaryColor;
-      case 'Attended':
+      case 'Completed':
         return isDark ? _kPrimaryColor : Colors.black87;
       default:
         return isDark ? Colors.grey.shade400 : Colors.grey.shade600;
@@ -157,9 +204,7 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
             ? _kBackgroundDark.withValues(alpha: 0.84)
             : Colors.white.withValues(alpha: 0.86),
         foregroundColor: isDark ? Colors.white : Colors.black,
-        actions: [
-          IconButton(onPressed: () {}, icon: const Icon(Icons.more_vert)),
-        ],
+        actions: const [],
       ),
       body: Column(
         children: [
@@ -226,7 +271,10 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
                 }
 
                 final allEvents = snapshot.data ?? const [];
-                final events = _filteredEvents(allEvents);
+                final events = _filteredEvents(allEvents).where((event) {
+                  final id = _asString(event['id'] ?? event['eventId']);
+                  return !_hiddenEventIds.contains(id);
+                }).toList();
                 final currentUid = _firebaseService.currentUser?.uid ?? '';
 
                 if (events.isEmpty) {
@@ -234,7 +282,7 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
                       ? 'You have not joined any events yet.'
                       : _selectedTab == 1
                       ? 'No upcoming joined events.'
-                      : 'No past joined events.';
+                      : 'No completed events yet.';
 
                   return Center(
                     child: Padding(
@@ -258,6 +306,7 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
                       const SizedBox(height: 12),
                   itemBuilder: (context, index) {
                     final event = events[index];
+                    final eventId = _asString(event['id'] ?? event['eventId']);
                     final title = _asString(
                       event['title'] ?? event['eventName'] ?? event['name'],
                       fallback: 'Untitled Event',
@@ -275,12 +324,7 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
                           event['photoUrl'],
                     );
                     final status = _statusForEvent(event, currentUid);
-                    final points = _asInt(
-                      event['impactPoints'] ??
-                          event['points'] ??
-                          event['rewardPoints'],
-                      fallback: 0,
-                    );
+                    final isLeaving = _leavingEventIds.contains(eventId);
 
                     return Material(
                       color: Colors.transparent,
@@ -431,7 +475,7 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
                                         ),
                                       ],
                                     ),
-                                    if (status == 'Attended') ...[
+                                    if (status == 'Completed') ...[
                                       const SizedBox(height: 6),
                                       Row(
                                         children: [
@@ -442,7 +486,7 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
                                           ),
                                           const SizedBox(width: 4),
                                           Text(
-                                            '+$points Points Earned',
+                                            'Event completed',
                                             style: const TextStyle(
                                               color: _kPrimaryColor,
                                               fontWeight: FontWeight.w700,
@@ -452,16 +496,63 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
                                         ],
                                       ),
                                     ],
-                                    if (status == 'Absent') ...[
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        'No points earned',
-                                        style: TextStyle(
-                                          color: isDark
-                                              ? Colors.grey.shade500
-                                              : Colors.grey.shade500,
-                                          fontStyle: FontStyle.italic,
-                                          fontSize: 11,
+                                    if (status == 'Joined') ...[
+                                      const SizedBox(height: 8),
+                                      Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: OutlinedButton(
+                                          onPressed: isLeaving
+                                              ? null
+                                              : () async {
+                                                  if (date != null &&
+                                                      !date.isAfter(
+                                                        DateTime.now(),
+                                                      )) {
+                                                    ScaffoldMessenger.of(
+                                                      context,
+                                                    ).showSnackBar(
+                                                      const SnackBar(
+                                                        content: Text(
+                                                          "You can't leave now.",
+                                                        ),
+                                                      ),
+                                                    );
+                                                    return;
+                                                  }
+                                                  final shouldLeave =
+                                                      await _confirmLeaveEvent(
+                                                        context,
+                                                      );
+                                                  if (!context.mounted) return;
+                                                  if (!shouldLeave) return;
+                                                  await _leaveEvent(
+                                                    context,
+                                                    eventId,
+                                                  );
+                                                },
+                                          style: OutlinedButton.styleFrom(
+                                            foregroundColor: isDark
+                                                ? Colors.grey.shade200
+                                                : Colors.grey.shade700,
+                                            side: BorderSide(
+                                              color: isDark
+                                                  ? Colors.grey.shade700
+                                                  : Colors.grey.shade400,
+                                            ),
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 10,
+                                              vertical: 8,
+                                            ),
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                          ),
+                                          child: Text(
+                                            isLeaving ? 'Updating...' : 'Leave',
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
                                         ),
                                       ),
                                     ],

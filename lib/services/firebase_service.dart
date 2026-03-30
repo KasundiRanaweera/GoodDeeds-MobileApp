@@ -124,6 +124,15 @@ class FirebaseService {
     return {...base, ...profile};
   }
 
+  // Live stream of base user document data.
+  Stream<Map<String, dynamic>> streamUserData(String uid) {
+    return _firestore
+        .collection('users')
+        .doc(uid)
+        .snapshots()
+        .map((doc) => doc.data() ?? <String, dynamic>{});
+  }
+
   // Update role for the currently signed-in user.
   Future<void> updateCurrentUserRole(String role) async {
     final user = _auth.currentUser;
@@ -219,6 +228,38 @@ class FirebaseService {
       if (!participantIds.contains(user.uid)) {
         participantIds.add(user.uid);
       }
+
+      transaction.update(eventRef, {
+        'participantIds': participantIds,
+        'participantsCount': participantIds.length,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    });
+  }
+
+  // Leave a joined event for the current volunteer.
+  Future<void> leaveEvent({required String eventId}) async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw Exception('Please login to manage events.');
+    }
+
+    final eventRef = _firestore.collection('events').doc(eventId);
+
+    await _firestore.runTransaction((transaction) async {
+      final snapshot = await transaction.get(eventRef);
+      if (!snapshot.exists) {
+        throw Exception('Event not found.');
+      }
+
+      final data = snapshot.data() ?? <String, dynamic>{};
+      final participantIds = List<String>.from(
+        (data['participantIds'] as List<dynamic>? ?? const []).map(
+          (e) => e.toString(),
+        ),
+      );
+
+      participantIds.removeWhere((id) => id == user.uid);
 
       transaction.update(eventRef, {
         'participantIds': participantIds,

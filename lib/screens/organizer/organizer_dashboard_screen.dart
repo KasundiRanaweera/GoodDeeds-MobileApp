@@ -337,17 +337,6 @@ class _OrganizerDashboardScreenState extends State<OrganizerDashboardScreen> {
                             color: isDark ? Colors.white : Colors.black,
                           ),
                         ),
-                        const Spacer(),
-                        IconButton(
-                          onPressed: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Filter coming soon.'),
-                              ),
-                            );
-                          },
-                          icon: const Icon(Icons.filter_list),
-                        ),
                       ],
                     ),
                     const SizedBox(height: 8),
@@ -399,6 +388,7 @@ class _OrganizerDashboardScreenState extends State<OrganizerDashboardScreen> {
                               event['startDate'],
                         );
                         final status = _statusForEvent(event);
+                        final canDelete = status == 'active';
 
                         final organizerPhone = _asString(
                           event['contactNumber'] ??
@@ -538,11 +528,76 @@ class _OrganizerDashboardScreenState extends State<OrganizerDashboardScreen> {
                                             ),
                                           ),
                                           const Spacer(),
-                                          Icon(
-                                            Icons.more_vert,
-                                            color: isDark
-                                                ? Colors.grey.shade500
-                                                : Colors.grey.shade400,
+                                          InkWell(
+                                            onTap: () {
+                                              if (!canDelete) {
+                                                ScaffoldMessenger.of(
+                                                  context,
+                                                ).showSnackBar(
+                                                  const SnackBar(
+                                                    content: Text(
+                                                      'Only active events can be deleted.',
+                                                    ),
+                                                  ),
+                                                );
+                                                return;
+                                              }
+                                              _confirmAndDeleteEvent(event);
+                                            },
+                                            borderRadius: BorderRadius.circular(
+                                              999,
+                                            ),
+                                            child: Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 10,
+                                                    vertical: 6,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color:
+                                                    (canDelete
+                                                            ? Colors.red
+                                                            : Colors.grey)
+                                                        .withValues(
+                                                          alpha: 0.12,
+                                                        ),
+                                                borderRadius:
+                                                    BorderRadius.circular(999),
+                                                border: Border.all(
+                                                  color:
+                                                      (canDelete
+                                                              ? Colors.red
+                                                              : Colors.grey)
+                                                          .withValues(
+                                                            alpha: 0.35,
+                                                          ),
+                                                ),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(
+                                                    Icons.delete_outline,
+                                                    size: 14,
+                                                    color: canDelete
+                                                        ? Colors.red
+                                                        : Colors.grey,
+                                                  ),
+                                                  const SizedBox(width: 5),
+                                                  Text(
+                                                    'Delete',
+                                                    style: TextStyle(
+                                                      fontSize: 11,
+                                                      fontWeight:
+                                                          FontWeight.w800,
+                                                      color: canDelete
+                                                          ? Colors.red
+                                                          : Colors.grey,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
                                           ),
                                         ],
                                       ),
@@ -635,37 +690,7 @@ class _OrganizerDashboardScreenState extends State<OrganizerDashboardScreen> {
                                         mainAxisAlignment:
                                             MainAxisAlignment.end,
                                         children: [
-                                          OutlinedButton.icon(
-                                            onPressed: () {
-                                              _confirmAndDeleteEvent(event);
-                                            },
-                                            style: OutlinedButton.styleFrom(
-                                              foregroundColor: Colors.red,
-                                              side: BorderSide(
-                                                color: Colors.red.withValues(
-                                                  alpha: 0.65,
-                                                ),
-                                                width: 1.4,
-                                              ),
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 14,
-                                                    vertical: 10,
-                                                  ),
-                                            ),
-                                            icon: const Icon(
-                                              Icons.delete_outline,
-                                              size: 18,
-                                            ),
-                                            label: const Text(
-                                              'Delete',
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.w700,
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 10),
-                                          OutlinedButton.icon(
+                                          ElevatedButton.icon(
                                             onPressed: () {
                                               final selectedEvent =
                                                   Map<String, dynamic>.from(
@@ -681,17 +706,15 @@ class _OrganizerDashboardScreenState extends State<OrganizerDashboardScreen> {
                                                 ),
                                               );
                                             },
-                                            style: OutlinedButton.styleFrom(
-                                              foregroundColor: _kPrimaryColor,
-                                              side: const BorderSide(
-                                                color: _kPrimaryColor,
-                                                width: 1.5,
-                                              ),
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: _kPrimaryColor,
+                                              foregroundColor: Colors.black,
                                               padding:
                                                   const EdgeInsets.symmetric(
                                                     horizontal: 16,
                                                     vertical: 10,
                                                   ),
+                                              elevation: 2,
                                             ),
                                             icon: const Icon(
                                               Icons.people,
@@ -819,11 +842,12 @@ class _StatCard extends StatelessWidget {
         border: Border.all(color: _kPrimaryColor.withValues(alpha: 0.08)),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(
             label.toUpperCase(),
+            textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.w700,
@@ -834,6 +858,7 @@ class _StatCard extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             value,
+            textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.w900,

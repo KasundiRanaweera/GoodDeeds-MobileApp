@@ -213,255 +213,279 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             userData['photoUrl'] ?? userData['avatarUrl'],
           );
           final joinedDate = _asDate(userData['createdAt']);
-          final basePoints = _asInt(
-            userData['impactPoints'] ??
-                userData['points'] ??
-                userData['rewardPoints'],
-            fallback: 0,
-          );
+          return StreamBuilder<Map<String, dynamic>>(
+            stream: currentUser == null
+                ? Stream.value(const <String, dynamic>{})
+                : _firebaseService.streamUserData(currentUser.uid),
+            builder: (context, liveUserSnapshot) {
+              final liveUserData =
+                  liveUserSnapshot.data ?? const <String, dynamic>{};
+              final basePoints = _asInt(
+                liveUserData['impactPoints'] ??
+                    liveUserData['points'] ??
+                    liveUserData['rewardPoints'] ??
+                    userData['impactPoints'] ??
+                    userData['points'] ??
+                    userData['rewardPoints'],
+                fallback: 0,
+              );
 
-          return StreamBuilder<List<Map<String, dynamic>>>(
-            stream: _firebaseService.streamMyJoinedEvents(),
-            builder: (context, eventsSnapshot) {
-              final events =
-                  eventsSnapshot.data ?? const <Map<String, dynamic>>[];
+              return StreamBuilder<List<Map<String, dynamic>>>(
+                stream: _firebaseService.streamMyJoinedEvents(),
+                builder: (context, eventsSnapshot) {
+                  final events =
+                      eventsSnapshot.data ?? const <Map<String, dynamic>>[];
 
-              final sortedEvents = [...events]
-                ..sort((a, b) {
-                  final aDate = _asDate(
-                    a['eventDate'] ?? a['date'] ?? a['startDate'],
-                  );
-                  final bDate = _asDate(
-                    b['eventDate'] ?? b['date'] ?? b['startDate'],
-                  );
-                  if (aDate == null && bDate == null) return 0;
-                  if (aDate == null) return 1;
-                  if (bDate == null) return -1;
-                  return bDate.compareTo(aDate);
-                });
+                  final attendanceByEventRaw =
+                      liveUserData['attendanceVerifiedAtByEvent'];
+                  final attendanceByEvent = attendanceByEventRaw is Map
+                      ? attendanceByEventRaw.map(
+                          (key, value) => MapEntry(key.toString(), value),
+                        )
+                      : const <String, dynamic>{};
 
-              final eventsAttended = sortedEvents.length;
-              final impactPoints = basePoints;
+                  final statusByEventRaw =
+                      liveUserData['participationStatusByEvent'];
+                  final statusByEvent = statusByEventRaw is Map
+                      ? statusByEventRaw.map(
+                          (key, value) => MapEntry(key.toString(), value),
+                        )
+                      : const <String, dynamic>{};
 
-              return SafeArea(
-                child: Align(
-                  alignment: Alignment.topCenter,
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 560),
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.only(bottom: 20),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                            child: Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: isDark
-                                    ? Colors.grey.shade900.withValues(
-                                        alpha: 0.55,
-                                      )
-                                    : Colors.white,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: _kPrimaryColor.withValues(alpha: 0.12),
+                  final attendedEvents = events.where((event) {
+                    final eventId = _asString(event['id'] ?? event['eventId']);
+                    if (eventId.isEmpty) return false;
+
+                    final hasVerifiedAttendance =
+                        attendanceByEvent.containsKey(eventId) &&
+                        attendanceByEvent[eventId] != null;
+                    final status = _asString(
+                      statusByEvent[eventId],
+                    ).toLowerCase();
+                    final markedAttended = status == 'attended';
+
+                    return hasVerifiedAttendance || markedAttended;
+                  }).toList();
+
+                  final sortedEvents = [...attendedEvents]
+                    ..sort((a, b) {
+                      final aDate = _asDate(
+                        a['eventDate'] ?? a['date'] ?? a['startDate'],
+                      );
+                      final bDate = _asDate(
+                        b['eventDate'] ?? b['date'] ?? b['startDate'],
+                      );
+                      if (aDate == null && bDate == null) return 0;
+                      if (aDate == null) return 1;
+                      if (bDate == null) return -1;
+                      return bDate.compareTo(aDate);
+                    });
+
+                  final eventsAttended = attendedEvents.length;
+                  final impactPoints = basePoints;
+
+                  return SafeArea(
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 560),
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.only(bottom: 20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  12,
+                                  16,
+                                  0,
                                 ),
-                              ),
-                              child: Row(
-                                children: [
-                                  Text(
-                                    'Account Actions',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      color: isDark
-                                          ? Colors.grey.shade300
-                                          : Colors.grey.shade700,
-                                    ),
-                                  ),
-                                  const Spacer(),
-                                  OutlinedButton.icon(
-                                    onPressed: _signOut,
-                                    style: OutlinedButton.styleFrom(
-                                      foregroundColor: _kPrimaryColor,
-                                      side: BorderSide(
-                                        color: _kPrimaryColor.withValues(
-                                          alpha: 0.5,
-                                        ),
-                                      ),
-                                    ),
-                                    icon: const Icon(Icons.logout, size: 18),
-                                    label: const Text(
-                                      'Sign Out',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w700,
+                                child: Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: isDark
+                                        ? Colors.grey.shade900.withValues(
+                                            alpha: 0.55,
+                                          )
+                                        : Colors.white,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: _kPrimaryColor.withValues(
+                                        alpha: 0.12,
                                       ),
                                     ),
                                   ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                            child: Center(
-                              child: Column(
-                                children: [
-                                  Stack(
+                                  child: Row(
                                     children: [
-                                      Container(
-                                        width: 128,
-                                        height: 128,
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          border: Border.all(
-                                            color: _kPrimaryColor.withValues(
-                                              alpha: 0.25,
-                                            ),
-                                            width: 4,
-                                          ),
-                                        ),
-                                        child: ClipOval(
-                                          child: photoUrl.isNotEmpty
-                                              ? Image.network(
-                                                  photoUrl,
-                                                  fit: BoxFit.cover,
-                                                  errorBuilder:
-                                                      (_, error, stackTrace) {
-                                                        return _ProfileFallbackAvatar(
-                                                          initials: _initials(
-                                                            name,
-                                                          ),
-                                                        );
-                                                      },
-                                                )
-                                              : _ProfileFallbackAvatar(
-                                                  initials: _initials(name),
-                                                ),
-                                        ),
-                                      ),
-                                      Positioned(
-                                        right: 4,
-                                        bottom: 4,
-                                        child: Container(
-                                          padding: const EdgeInsets.all(5),
-                                          decoration: BoxDecoration(
-                                            color: _kPrimaryColor,
-                                            shape: BoxShape.circle,
-                                            border: Border.all(
-                                              color: isDark
-                                                  ? _kBackgroundDark
-                                                  : _kBackgroundLight,
-                                              width: 2,
-                                            ),
-                                          ),
-                                          child: const Icon(
-                                            Icons.photo_camera,
-                                            size: 14,
-                                            color: Colors.black,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 14),
-                                  Text(
-                                    name,
-                                    style: TextStyle(
-                                      fontSize: 28,
-                                      fontWeight: FontWeight.w900,
-                                      color: isDark
-                                          ? Colors.white
-                                          : Colors.black,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 14,
-                                    ),
-                                    child: Text(
-                                      bio,
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                        color: isDark
-                                            ? Colors.grey.shade300
-                                            : Colors.grey.shade700,
-                                        fontSize: 13,
-                                        height: 1.4,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      const Icon(
-                                        Icons.calendar_month,
-                                        size: 16,
-                                        color: _kPrimaryColor,
-                                      ),
-                                      const SizedBox(width: 4),
                                       Text(
-                                        _formatJoinedDate(joinedDate),
-                                        style: const TextStyle(
-                                          fontSize: 12,
+                                        'Account Actions',
+                                        style: TextStyle(
                                           fontWeight: FontWeight.w700,
-                                          color: _kPrimaryColor,
+                                          color: isDark
+                                              ? Colors.grey.shade300
+                                              : Colors.grey.shade700,
+                                        ),
+                                      ),
+                                      const Spacer(),
+                                      OutlinedButton.icon(
+                                        onPressed: _signOut,
+                                        style: OutlinedButton.styleFrom(
+                                          foregroundColor: _kPrimaryColor,
+                                          side: BorderSide(
+                                            color: _kPrimaryColor.withValues(
+                                              alpha: 0.5,
+                                            ),
+                                          ),
+                                        ),
+                                        icon: const Icon(
+                                          Icons.logout,
+                                          size: 18,
+                                        ),
+                                        label: const Text(
+                                          'Sign Out',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                          ),
                                         ),
                                       ),
                                     ],
                                   ),
-                                ],
+                                ),
                               ),
-                            ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
-                            child: Text(
-                              'IMPACT OVERVIEW',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 1.2,
-                                color: isDark
-                                    ? Colors.grey.shade400
-                                    : Colors.grey.shade600,
-                              ),
-                            ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: _ProfileStatCard(
-                                    title: 'Impact Points',
-                                    value: impactPoints.toString(),
-                                    valueColor: _kPrimaryColor,
-                                    isDark: isDark,
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  12,
+                                  16,
+                                  8,
+                                ),
+                                child: Center(
+                                  child: Column(
+                                    children: [
+                                      Stack(
+                                        children: [
+                                          Container(
+                                            width: 128,
+                                            height: 128,
+                                            decoration: BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              border: Border.all(
+                                                color: _kPrimaryColor
+                                                    .withValues(alpha: 0.25),
+                                                width: 4,
+                                              ),
+                                            ),
+                                            child: ClipOval(
+                                              child: photoUrl.isNotEmpty
+                                                  ? Image.network(
+                                                      photoUrl,
+                                                      fit: BoxFit.cover,
+                                                      errorBuilder:
+                                                          (
+                                                            _,
+                                                            error,
+                                                            stackTrace,
+                                                          ) {
+                                                            return _ProfileFallbackAvatar(
+                                                              initials:
+                                                                  _initials(
+                                                                    name,
+                                                                  ),
+                                                            );
+                                                          },
+                                                    )
+                                                  : _ProfileFallbackAvatar(
+                                                      initials: _initials(name),
+                                                    ),
+                                            ),
+                                          ),
+                                          Positioned(
+                                            right: 4,
+                                            bottom: 4,
+                                            child: Container(
+                                              padding: const EdgeInsets.all(5),
+                                              decoration: BoxDecoration(
+                                                color: _kPrimaryColor,
+                                                shape: BoxShape.circle,
+                                                border: Border.all(
+                                                  color: isDark
+                                                      ? _kBackgroundDark
+                                                      : _kBackgroundLight,
+                                                  width: 2,
+                                                ),
+                                              ),
+                                              child: const Icon(
+                                                Icons.photo_camera,
+                                                size: 14,
+                                                color: Colors.black,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 14),
+                                      Text(
+                                        name,
+                                        style: TextStyle(
+                                          fontSize: 28,
+                                          fontWeight: FontWeight.w900,
+                                          color: isDark
+                                              ? Colors.white
+                                              : Colors.black,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 14,
+                                        ),
+                                        child: Text(
+                                          bio,
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            color: isDark
+                                                ? Colors.grey.shade300
+                                                : Colors.grey.shade700,
+                                            fontSize: 13,
+                                            height: 1.4,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          const Icon(
+                                            Icons.calendar_month,
+                                            size: 16,
+                                            color: _kPrimaryColor,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            _formatJoinedDate(joinedDate),
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w700,
+                                              color: _kPrimaryColor,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: _ProfileStatCard(
-                                    title: 'Events Attended',
-                                    value: eventsAttended.toString(),
-                                    valueColor: isDark
-                                        ? Colors.white
-                                        : Colors.black,
-                                    isDark: isDark,
-                                  ),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  10,
+                                  16,
+                                  4,
                                 ),
-                              ],
-                            ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-                            child: Row(
-                              children: [
-                                Text(
-                                  'ACTIVITY HISTORY',
+                                child: Text(
+                                  'IMPACT OVERVIEW',
                                   style: TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w800,
@@ -471,88 +495,152 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                                         : Colors.grey.shade600,
                                   ),
                                 ),
-                                const Spacer(),
-                                TextButton(
-                                  onPressed: () {},
-                                  style: TextButton.styleFrom(
-                                    foregroundColor: _kPrimaryColor,
-                                    visualDensity: VisualDensity.compact,
-                                  ),
-                                  child: const Text(
-                                    'View All',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  6,
+                                  16,
+                                  8,
                                 ),
-                              ],
-                            ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-                            child: sortedEvents.isEmpty
-                                ? Container(
-                                    width: double.infinity,
-                                    padding: const EdgeInsets.all(16),
-                                    decoration: BoxDecoration(
-                                      color: isDark
-                                          ? Colors.grey.shade900
-                                          : Colors.white,
-                                      borderRadius: BorderRadius.circular(14),
-                                      border: Border.all(
-                                        color: isDark
-                                            ? Colors.grey.shade800
-                                            : Colors.grey.shade200,
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: _ProfileStatCard(
+                                        title: 'Impact Points',
+                                        value: impactPoints.toString(),
+                                        valueColor: _kPrimaryColor,
+                                        isDark: isDark,
                                       ),
                                     ),
-                                    child: Text(
-                                      'No activity yet. Join events to build your impact history.',
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: _ProfileStatCard(
+                                        title: 'Events Attended',
+                                        value: eventsAttended.toString(),
+                                        valueColor: isDark
+                                            ? Colors.white
+                                            : Colors.black,
+                                        isDark: isDark,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  14,
+                                  16,
+                                  8,
+                                ),
+                                child: Row(
+                                  children: [
+                                    Text(
+                                      'ACTIVITY HISTORY',
                                       style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: 1.2,
                                         color: isDark
-                                            ? Colors.grey.shade300
-                                            : Colors.grey.shade700,
-                                        fontWeight: FontWeight.w600,
+                                            ? Colors.grey.shade400
+                                            : Colors.grey.shade600,
                                       ),
                                     ),
-                                  )
-                                : Column(
-                                    children: [
-                                      for (final event in sortedEvents.take(6))
-                                        Padding(
-                                          padding: const EdgeInsets.only(
-                                            bottom: 10,
+                                    const Spacer(),
+                                    TextButton(
+                                      onPressed: () {},
+                                      style: TextButton.styleFrom(
+                                        foregroundColor: _kPrimaryColor,
+                                        visualDensity: VisualDensity.compact,
+                                      ),
+                                      child: const Text(
+                                        'View All',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  0,
+                                  16,
+                                  0,
+                                ),
+                                child: sortedEvents.isEmpty
+                                    ? Container(
+                                        width: double.infinity,
+                                        padding: const EdgeInsets.all(16),
+                                        decoration: BoxDecoration(
+                                          color: isDark
+                                              ? Colors.grey.shade900
+                                              : Colors.white,
+                                          borderRadius: BorderRadius.circular(
+                                            14,
                                           ),
-                                          child: _ProfileActivityCard(
-                                            icon: _activityIcon(event),
-                                            iconColor: _activityTint(
-                                              _activityIcon(event),
-                                              isDark,
-                                            ),
-                                            title: _asString(
-                                              event['title'] ??
-                                                  event['eventName'] ??
-                                                  event['name'],
-                                              fallback: 'Community Activity',
-                                            ),
-                                            subtitle:
-                                                '${_relativeDate(_asDate(event['eventDate'] ?? event['date'] ?? event['startDate']))} • ${_asString(event['location'] ?? event['venue'], fallback: 'Community')}',
-                                            points: _asInt(
-                                              event['impactPoints'] ??
-                                                  event['points'] ??
-                                                  event['rewardPoints'],
-                                              fallback: 0,
-                                            ),
-                                            isDark: isDark,
+                                          border: Border.all(
+                                            color: isDark
+                                                ? Colors.grey.shade800
+                                                : Colors.grey.shade200,
                                           ),
                                         ),
-                                    ],
-                                  ),
+                                        child: Text(
+                                          'No verified activity yet. Your history and points update after organizer marks attendance.',
+                                          style: TextStyle(
+                                            color: isDark
+                                                ? Colors.grey.shade300
+                                                : Colors.grey.shade700,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      )
+                                    : Column(
+                                        children: [
+                                          for (final event in sortedEvents.take(
+                                            6,
+                                          ))
+                                            Padding(
+                                              padding: const EdgeInsets.only(
+                                                bottom: 10,
+                                              ),
+                                              child: _ProfileActivityCard(
+                                                icon: _activityIcon(event),
+                                                iconColor: _activityTint(
+                                                  _activityIcon(event),
+                                                  isDark,
+                                                ),
+                                                title: _asString(
+                                                  event['title'] ??
+                                                      event['eventName'] ??
+                                                      event['name'],
+                                                  fallback:
+                                                      'Community Activity',
+                                                ),
+                                                subtitle:
+                                                    '${_relativeDate(_asDate(event['eventDate'] ?? event['date'] ?? event['startDate']))} • ${_asString(event['location'] ?? event['venue'], fallback: 'Community')}',
+                                                points: _asInt(
+                                                  event['impactPoints'] ??
+                                                      event['points'] ??
+                                                      event['rewardPoints'],
+                                                  fallback: 0,
+                                                ),
+                                                isDark: isDark,
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
                     ),
-                  ),
-                ),
+                  );
+                },
               );
             },
           );
@@ -751,7 +839,7 @@ class _ProfileActivityCard extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Text(
-            '+$points pts',
+            '+$points points',
             style: TextStyle(
               color: isDark ? const Color(0xFF59D99D) : const Color(0xFF1C8D55),
               fontWeight: FontWeight.w800,

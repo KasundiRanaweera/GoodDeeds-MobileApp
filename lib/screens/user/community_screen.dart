@@ -22,7 +22,8 @@ class _CommunityScreenState extends State<CommunityScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   String _query = '';
-  String _roleFilter = 'All';
+  String _roleFilter = 'Volunteer';
+  String _pointsFilter = 'All';
 
   @override
   void dispose() {
@@ -58,6 +59,23 @@ class _CommunityScreenState extends State<CommunityScreen> {
         return false;
       }
 
+      final points = _asInt(
+        user['impactPoints'] ?? user['points'] ?? user['rewardPoints'],
+      );
+      switch (_pointsFilter) {
+        case 'High':
+          if (points < 500) return false;
+          break;
+        case 'Medium':
+          if (points < 100 || points >= 500) return false;
+          break;
+        case 'Low':
+          if (points >= 100) return false;
+          break;
+        default:
+          break;
+      }
+
       if (q.isEmpty) return true;
       final name = _asString(
         user['name'] ?? user['displayName'] ?? user['fullName'],
@@ -76,12 +94,12 @@ class _CommunityScreenState extends State<CommunityScreen> {
   }
 
   String _standingText(int rank, int total) {
-    if (total == 0) return 'New Contributor';
+    if (total == 0) return 'New Volunteer';
     final percentile = ((rank / total) * 100).clamp(1, 100).round();
     if (percentile <= 5) return 'Top 5% Contributor';
     if (percentile <= 10) return 'Top 10% Contributor';
     if (percentile <= 25) return 'Top 25% Contributor';
-    return 'Top 50% Contributor';
+    return 'Top 50% Volunteer';
   }
 
   Widget _avatar(String photoUrl, String name, bool isDark) {
@@ -282,7 +300,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                       child: Row(
                         children: [
                           Text(
-                            'Top Contributors',
+                            'Top Volunteers',
                             style: TextStyle(
                               fontSize: 22,
                               fontWeight: FontWeight.w900,
@@ -296,16 +314,32 @@ class _CommunityScreenState extends State<CommunityScreen> {
                                 context: context,
                                 showDragHandle: true,
                                 builder: (sheetContext) {
-                                  final options = [
-                                    'All',
-                                    'Volunteer',
-                                    'Organizer',
-                                  ];
                                   return SafeArea(
                                     child: ListView(
                                       shrinkWrap: true,
                                       children: [
-                                        for (final option in options)
+                                        Padding(
+                                          padding: const EdgeInsets.fromLTRB(
+                                            16,
+                                            8,
+                                            16,
+                                            12,
+                                          ),
+                                          child: Text(
+                                            'Role',
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w800,
+                                              color: isDark
+                                                  ? Colors.grey.shade300
+                                                  : Colors.grey.shade600,
+                                            ),
+                                          ),
+                                        ),
+                                        for (final option in [
+                                          'All',
+                                          'Volunteer',
+                                        ])
                                           ListTile(
                                             title: Text(option),
                                             trailing: _roleFilter == option
@@ -318,6 +352,60 @@ class _CommunityScreenState extends State<CommunityScreen> {
                                               setState(
                                                 () => _roleFilter = option,
                                               );
+                                              Navigator.of(sheetContext).pop();
+                                            },
+                                          ),
+                                        const Divider(),
+                                        Padding(
+                                          padding: const EdgeInsets.fromLTRB(
+                                            16,
+                                            12,
+                                            16,
+                                            12,
+                                          ),
+                                          child: Text(
+                                            'Points',
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w800,
+                                              color: isDark
+                                                  ? Colors.grey.shade300
+                                                  : Colors.grey.shade600,
+                                            ),
+                                          ),
+                                        ),
+                                        for (final option in [
+                                          'All',
+                                          'High (500+)',
+                                          'Medium (100-499)',
+                                          'Low (0-99)',
+                                        ])
+                                          ListTile(
+                                            title: Text(option),
+                                            trailing:
+                                                _pointsFilter ==
+                                                    option.split(' ')[0]
+                                                ? const Icon(
+                                                    Icons.check,
+                                                    color: _kPrimaryColor,
+                                                  )
+                                                : null,
+                                            onTap: () {
+                                              setState(() {
+                                                if (option == 'All') {
+                                                  _pointsFilter = 'All';
+                                                } else if (option.startsWith(
+                                                  'High',
+                                                )) {
+                                                  _pointsFilter = 'High';
+                                                } else if (option.startsWith(
+                                                  'Medium',
+                                                )) {
+                                                  _pointsFilter = 'Medium';
+                                                } else {
+                                                  _pointsFilter = 'Low';
+                                                }
+                                              });
                                               Navigator.of(sheetContext).pop();
                                             },
                                           ),

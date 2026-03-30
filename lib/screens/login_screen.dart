@@ -461,44 +461,58 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                         const SizedBox(height: 48),
-                        Container(
+                        SizedBox(
                           height: 200,
-                          decoration: BoxDecoration(
+                          child: ClipRRect(
                             borderRadius: BorderRadius.circular(12),
-                            image: const DecorationImage(
-                              image: NetworkImage(
-                                'https://lh3.googleusercontent.com/aida-public/AB6AXuCm3zD-5MNeMHcMbIXqKYABJPruP8A8aO_JZXiuXMkAcG7KBwM5Ot9WiLJQj_o7YgJagzR-RlxOnpr8Zlk7I_cI8wgwKHihCfv9IW0BzljK5kO2MlCc0UkBKjo0gjrmH3JvwOPGlkP-QVr5YiRdTya7CI9ddooACiLUiI-aZON2z9zpnTmmLbKGVhpJM65W0hMTkrRFtrVvkSELJOgGoxUD9PwnjVjTI2HrZLzrtPD-lI2YYusl5bWGBDj98fx62vxLVyCLW_DwqWY',
-                              ),
-                              fit: BoxFit.cover,
-                              alignment: Alignment(0, -0.5),
-                              filterQuality: FilterQuality.high,
-                            ),
-                          ),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(12),
-                              gradient: LinearGradient(
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                                colors: [
-                                  Colors.transparent,
-                                  Colors.black.withValues(alpha: 0.35),
-                                ],
-                              ),
-                            ),
-                            child: const Align(
-                              alignment: Alignment.bottomLeft,
-                              child: Padding(
-                                padding: EdgeInsets.all(16.0),
-                                child: Text(
-                                  'Join over 10,000 volunteers',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold,
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                Image.network(
+                                  'https://lh3.googleusercontent.com/aida-public/AB6AXuCm3zD-5MNeMHcMbIXqKYABJPruP8A8aO_JZXiuXMkAcG7KBwM5Ot9WiLJQj_o7YgJagzR-RlxOnpr8Zlk7I_cI8wgwKHihCfv9IW0BzljK5kO2MlCc0UkBKjo0gjrmH3JvwOPGlkP-QVr5YiRdTya7CI9ddooACiLUiI-aZON2z9zpnTmmLbKGVhpJM65W0hMTkrRFtrVvkSELJOgGoxUD9PwnjVjTI2HrZLzrtPD-lI2YYusl5bWGBDj98fx62vxLVyCLW_DwqWY',
+                                  fit: BoxFit.cover,
+                                  alignment: const Alignment(0, -0.5),
+                                  filterQuality: FilterQuality.high,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return Container(
+                                      color: Colors.grey.shade200,
+                                      child: const Center(
+                                        child: Icon(
+                                          Icons.image_not_supported,
+                                          size: 44,
+                                          color: Colors.grey,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                                Container(
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topCenter,
+                                      end: Alignment.bottomCenter,
+                                      colors: [
+                                        Colors.transparent,
+                                        Colors.black.withValues(alpha: 0.35),
+                                      ],
+                                    ),
                                   ),
                                 ),
-                              ),
+                                const Align(
+                                  alignment: Alignment.bottomLeft,
+                                  child: Padding(
+                                    padding: EdgeInsets.all(16.0),
+                                    child: Text(
+                                      'Join over 10,000 volunteers',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),

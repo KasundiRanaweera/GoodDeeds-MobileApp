@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../widgets/safe_avatar.dart';
 import 'login_screen.dart';
 import 'register_screen.dart';
 
@@ -325,10 +327,14 @@ class _AvatarStack extends StatelessWidget {
           for (var i = 0; i < _avatars.length; i++)
             Positioned(
               left: i * _avatarSpacing,
-              child: CircleAvatar(
+              child: SafeAvatar(
                 radius: _avatarRadius,
-                backgroundColor: isDark ? Colors.grey[900] : Colors.white,
-                backgroundImage: NetworkImage(_avatars[i]),
+                backgroundColor: isDark
+                    ? (Colors.grey[900] ?? Colors.black)
+                    : Colors.white,
+                imageUrl: _avatars[i],
+                iconSize: 18,
+                iconColor: isDark ? Colors.grey[400]! : Colors.grey[600]!,
               ),
             ),
           Positioned(

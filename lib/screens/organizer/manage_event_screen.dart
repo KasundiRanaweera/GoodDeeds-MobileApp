@@ -672,9 +672,23 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
       debugPrint('Event updated successfully: $_eventId');
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Event edited successfully.')),
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: const Text('Event Updated'),
+            content: const Text('Event edited successfully.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('OK'),
+              ),
+            ],
+          );
+        },
       );
+      if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const OrganizerDashboardScreen()),
       );
@@ -791,7 +805,7 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
                           suffixIcon: Padding(
                             padding: const EdgeInsets.only(top: 18, right: 12),
                             child: Text(
-                              'pts',
+                              'points',
                               style: TextStyle(
                                 color: isDark
                                     ? Colors.grey.shade400
