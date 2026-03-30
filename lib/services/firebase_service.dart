@@ -49,6 +49,20 @@ class FirebaseService {
         'createdAt': FieldValue.serverTimestamp(),
       });
 
+      // Keep editable profile fields in a separate collection.
+      await _firestore
+          .collection('user_profiles')
+          .doc(userCredential.user!.uid)
+          .set({
+            'name': name,
+            'phone': phone,
+            'photoUrl': '',
+            'bio': '',
+            'address': '',
+            'createdAt': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+
       return userCredential;
     } catch (e, st) {
       // Log the full error to console for debugging.
@@ -91,6 +105,23 @@ class FirebaseService {
     } catch (e) {
       throw Exception('Failed to get user data: $e');
     }
+  }
+
+  // Get editable user profile data from dedicated profile collection.
+  Future<Map<String, dynamic>?> getUserProfileData(String uid) async {
+    try {
+      final doc = await _firestore.collection('user_profiles').doc(uid).get();
+      return doc.data();
+    } catch (e) {
+      throw Exception('Failed to get user profile data: $e');
+    }
+  }
+
+  // Merge auth/base user data with profile collection (profile values override).
+  Future<Map<String, dynamic>> getMergedUserData(String uid) async {
+    final base = await getUserData(uid) ?? <String, dynamic>{};
+    final profile = await getUserProfileData(uid) ?? <String, dynamic>{};
+    return {...base, ...profile};
   }
 
   // Update role for the currently signed-in user.

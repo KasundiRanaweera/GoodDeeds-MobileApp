@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 import '../../services/firebase_service.dart';
 import '../welcome_screen.dart';
@@ -136,6 +138,69 @@ class _OrganizerDashboardScreenState extends State<OrganizerDashboardScreen> {
     }
   }
 
+  Future<void> _confirmAndDeleteEvent(Map<String, dynamic> event) async {
+    final eventId = _asString(event['id']);
+    if (eventId.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to delete: missing event id.')),
+      );
+      return;
+    }
+
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Delete Event'),
+          content: const Text('Do you want to delete this event?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('No'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Yes'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldDelete != true) return;
+
+    try {
+      final imageUrl = _asString(
+        event['imageUrl'] ?? event['bannerUrl'] ?? event['photoUrl'],
+      );
+
+      await FirebaseFirestore.instance
+          .collection('events')
+          .doc(eventId)
+          .delete();
+
+      if (imageUrl.isNotEmpty) {
+        try {
+          await FirebaseStorage.instance.refFromURL(imageUrl).delete();
+        } catch (_) {
+          // Event data is already deleted; ignore storage cleanup failures.
+        }
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Event deleted successfully.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to delete event: $e')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -226,8 +291,10 @@ class _OrganizerDashboardScreenState extends State<OrganizerDashboardScreen> {
                       child: OutlinedButton.icon(
                         onPressed: () => _signOut(context),
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.red.shade400,
-                          side: BorderSide(color: Colors.red.shade300),
+                          foregroundColor: _kPrimaryColor,
+                          side: BorderSide(
+                            color: _kPrimaryColor.withValues(alpha: 0.5),
+                          ),
                         ),
                         icon: const Icon(Icons.logout, size: 18),
                         label: const Text(
@@ -568,6 +635,36 @@ class _OrganizerDashboardScreenState extends State<OrganizerDashboardScreen> {
                                         mainAxisAlignment:
                                             MainAxisAlignment.end,
                                         children: [
+                                          OutlinedButton.icon(
+                                            onPressed: () {
+                                              _confirmAndDeleteEvent(event);
+                                            },
+                                            style: OutlinedButton.styleFrom(
+                                              foregroundColor: Colors.red,
+                                              side: BorderSide(
+                                                color: Colors.red.withValues(
+                                                  alpha: 0.65,
+                                                ),
+                                                width: 1.4,
+                                              ),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 14,
+                                                    vertical: 10,
+                                                  ),
+                                            ),
+                                            icon: const Icon(
+                                              Icons.delete_outline,
+                                              size: 18,
+                                            ),
+                                            label: const Text(
+                                              'Delete',
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 10),
                                           OutlinedButton.icon(
                                             onPressed: () {
                                               final selectedEvent =

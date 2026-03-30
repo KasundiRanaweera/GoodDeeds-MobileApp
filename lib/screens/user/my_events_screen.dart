@@ -140,17 +140,23 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
     return Scaffold(
       backgroundColor: background,
       appBar: AppBar(
-        title: const Text(
-          'My Events',
-          style: TextStyle(fontWeight: FontWeight.w700),
-        ),
         centerTitle: true,
-        backgroundColor: isDark ? _kBackgroundDark : Colors.white,
-        foregroundColor: isDark ? Colors.white : Colors.black,
-        elevation: 1,
+        elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         shadowColor: Colors.transparent,
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Icon(Icons.event, color: _kPrimaryColor),
+            SizedBox(width: 8),
+            Text('My Events', style: TextStyle(fontWeight: FontWeight.w800)),
+          ],
+        ),
+        backgroundColor: isDark
+            ? _kBackgroundDark.withValues(alpha: 0.84)
+            : Colors.white.withValues(alpha: 0.86),
+        foregroundColor: isDark ? Colors.white : Colors.black,
         actions: [
           IconButton(onPressed: () {}, icon: const Icon(Icons.more_vert)),
         ],

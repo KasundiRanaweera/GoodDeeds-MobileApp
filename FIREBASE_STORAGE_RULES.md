@@ -43,6 +43,14 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Dedicated profile collection used by profile screens
+    match /user_profiles/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId);
+      allow delete: if false;
+    }
+
     // Needed for event create/read/update flow
     match /events/{eventId} {
       allow read: if isSignedIn();
@@ -60,7 +68,7 @@ service cloud.firestore {
 2. Click **Publish** for Firestore rules.
 3. Wait 1-2 minutes.
 4. Sign out and sign in again.
-5. Test organizer login and event image upload.
+5. Test organizer login, event image upload, and user profile save.
 
 ## Quick Troubleshooting
 

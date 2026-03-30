@@ -4,8 +4,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 
+import '../../constants/event_categories.dart';
 import '../../services/firebase_service.dart';
 import 'organizer_dashboard_screen.dart';
 
@@ -23,6 +26,10 @@ class ManageEventScreen extends StatefulWidget {
 }
 
 class _ManageEventScreenState extends State<ManageEventScreen> {
+  static const double _kMaxImageWidth = 1600;
+  static const double _kMaxImageHeight = 1600;
+  static const int _kImageQuality = 80;
+
   final FirebaseService _firebaseService = FirebaseService();
   final _formKey = GlobalKey<FormState>();
   final ImagePicker _imagePicker = ImagePicker();
@@ -34,16 +41,7 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
   late final TextEditingController _pointsController;
   late final TextEditingController _contactNumberController;
 
-  final List<String> _categories = const [
-    'Environment',
-    'Technology',
-    'Education',
-    'Health',
-    'Networking',
-    'Workshop',
-    'Charity',
-    'Volunteering',
-  ];
+  final List<String> _categories = kOrganizerEventCategories;
 
   late String _selectedCategory;
   DateTime? _selectedDate;
@@ -53,6 +51,19 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
   Uint8List? _selectedImageBytes;
   bool _isUploadingImage = false;
   late String _currentImageUrl;
+  String _selectedImageExtension = 'jpg';
+  String _selectedImageContentType = 'image/jpeg';
+
+  bool get _isDesktopPlatform =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.windows ||
+          defaultTargetPlatform == TargetPlatform.linux ||
+          defaultTargetPlatform == TargetPlatform.macOS);
+
+  bool get _canUseCamera =>
+      kIsWeb ||
+      defaultTargetPlatform == TargetPlatform.android ||
+      defaultTargetPlatform == TargetPlatform.iOS;
 
   String get _eventId => widget.eventData['id']?.toString() ?? '';
 
@@ -213,51 +224,23 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
                 title: const Text('Gallery'),
                 onTap: () async {
                   Navigator.pop(sheetContext);
-                  final image = await _imagePicker.pickImage(
-                    source: ImageSource.gallery,
-                  );
-                  if (image != null && mounted) {
-                    if (kIsWeb) {
-                      final bytes = await image.readAsBytes();
-                      if (!mounted) return;
-                      setState(() {
-                        _selectedImageBytes = bytes;
-                        _selectedImage = null;
-                      });
-                    } else {
-                      setState(() {
-                        _selectedImage = File(image.path);
-                        _selectedImageBytes = null;
-                      });
-                    }
-                  }
+                  await _pickImageFromSource(ImageSource.gallery);
                 },
               ),
-              ListTile(
-                leading: const Icon(Icons.camera_alt, color: _kPrimaryColor),
-                title: const Text('Camera'),
-                onTap: () async {
-                  Navigator.pop(sheetContext);
-                  final image = await _imagePicker.pickImage(
-                    source: ImageSource.camera,
-                  );
-                  if (image != null && mounted) {
-                    if (kIsWeb) {
-                      final bytes = await image.readAsBytes();
-                      if (!mounted) return;
-                      setState(() {
-                        _selectedImageBytes = bytes;
-                        _selectedImage = null;
-                      });
-                    } else {
-                      setState(() {
-                        _selectedImage = File(image.path);
-                        _selectedImageBytes = null;
-                      });
-                    }
-                  }
-                },
-              ),
+              if (_canUseCamera)
+                ListTile(
+                  leading: const Icon(Icons.camera_alt, color: _kPrimaryColor),
+                  title: const Text('Camera'),
+                  onTap: () async {
+                    Navigator.pop(sheetContext);
+                    await _pickImageFromSource(ImageSource.camera);
+                  },
+                )
+              else
+                const ListTile(
+                  leading: Icon(Icons.camera_alt_outlined, color: Colors.grey),
+                  title: Text('Camera (not available on desktop)'),
+                ),
             ],
           ),
         );
@@ -265,7 +248,93 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
     );
   }
 
-  Future<String?> _uploadSelectedImageToStorage() async {
+  void _updateImageMetadata(XFile image) {
+    final imageName = image.name.isNotEmpty ? image.name : image.path;
+    final dotIndex = imageName.lastIndexOf('.');
+    final rawExtension = dotIndex == -1
+        ? 'jpg'
+        : imageName.substring(dotIndex + 1).toLowerCase();
+
+    const mimeByExt = {
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'png': 'image/png',
+      'webp': 'image/webp',
+      'gif': 'image/gif',
+      'heic': 'image/heic',
+      'heif': 'image/heif',
+    };
+
+    _selectedImageExtension = rawExtension;
+    _selectedImageContentType = mimeByExt[rawExtension] ?? 'image/jpeg';
+  }
+
+  Uint8List _optimizeImageBytes(Uint8List originalBytes) {
+    final decoded = img.decodeImage(originalBytes);
+    if (decoded == null) {
+      return originalBytes;
+    }
+
+    var output = decoded;
+    if (decoded.width > _kMaxImageWidth || decoded.height > _kMaxImageHeight) {
+      output = img.copyResize(
+        decoded,
+        width: decoded.width >= decoded.height ? _kMaxImageWidth.toInt() : null,
+        height: decoded.height > decoded.width
+            ? _kMaxImageHeight.toInt()
+            : null,
+        interpolation: img.Interpolation.average,
+      );
+    }
+
+    final encoded = img.encodeJpg(output, quality: _kImageQuality);
+    return Uint8List.fromList(encoded);
+  }
+
+  Future<void> _pickImageFromSource(ImageSource source) async {
+    try {
+      final image = await _imagePicker.pickImage(
+        source: source,
+        maxWidth: _kMaxImageWidth,
+        maxHeight: _kMaxImageHeight,
+        imageQuality: _kImageQuality,
+      );
+      if (image == null || !mounted) return;
+
+      _updateImageMetadata(image);
+
+      final rawBytes = await image.readAsBytes();
+      final optimizedBytes = _optimizeImageBytes(rawBytes);
+      if (!mounted) return;
+      setState(() {
+        _selectedImageBytes = optimizedBytes;
+        _selectedImage = kIsWeb || _isDesktopPlatform ? null : File(image.path);
+        if (kIsWeb || _isDesktopPlatform) {
+          _selectedImageExtension = 'jpg';
+          _selectedImageContentType = 'image/jpeg';
+        }
+      });
+    } on PlatformException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not access image source: ${e.message ?? e.code}',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Image selection failed: $e')));
+    }
+  }
+
+  Future<String?> _uploadSelectedImageToStorage({
+    FirebaseStorage? storageOverride,
+    bool allowLegacyBucketRetry = true,
+  }) async {
     try {
       setState(() => _isUploadingImage = true);
 
@@ -274,26 +343,31 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
         throw Exception('User not authenticated');
       }
 
+      final storage = storageOverride ?? FirebaseStorage.instance;
+
       final fileName =
-          'events/${user.uid}/${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final ref = FirebaseStorage.instance.ref().child(fileName);
+          'events/${user.uid}/${DateTime.now().millisecondsSinceEpoch}.$_selectedImageExtension';
+      final ref = storage.ref().child(fileName);
 
       debugPrint('=== Starting image upload ===');
       debugPrint('User UID: ${user.uid}');
       debugPrint('File path: $fileName');
+      debugPrint('Storage bucket: ${storage.app.options.storageBucket}');
 
       final UploadTask uploadTask;
+      int uploadBytesEstimate = 0;
+      final isMobilePlatform = !kIsWeb && !_isDesktopPlatform;
 
-      if (kIsWeb) {
-        final bytes = _selectedImageBytes;
-        if (bytes == null || bytes.isEmpty) {
-          throw Exception('No image data available for upload on web');
-        }
-        debugPrint('Web upload: bytes size = ${bytes.length}');
-        uploadTask = ref.putData(
-          bytes,
+      final bytes = _selectedImageBytes;
+      final imageFile = _selectedImage;
+      if (isMobilePlatform && imageFile != null && imageFile.existsSync()) {
+        final fileSize = imageFile.lengthSync();
+        uploadBytesEstimate = fileSize;
+        debugPrint('Mobile file upload: file size = $fileSize');
+        uploadTask = ref.putFile(
+          imageFile,
           SettableMetadata(
-            contentType: 'image/jpeg',
+            contentType: _selectedImageContentType,
             customMetadata: {
               'uploadedBy': user.uid,
               'uploadedAt': DateTime.now().toIso8601String(),
@@ -301,27 +375,48 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
           ),
         );
       } else {
-        final imageFile = _selectedImage;
-        if (imageFile == null || !imageFile.existsSync()) {
-          throw Exception('Image file not found or invalid');
+        if (bytes == null || bytes.isEmpty) {
+          if (imageFile != null && imageFile.existsSync()) {
+            final fileSize = imageFile.lengthSync();
+            uploadBytesEstimate = fileSize;
+            debugPrint('Fallback file upload: file size = $fileSize');
+            uploadTask = ref.putFile(
+              imageFile,
+              SettableMetadata(
+                contentType: _selectedImageContentType,
+                customMetadata: {
+                  'uploadedBy': user.uid,
+                  'uploadedAt': DateTime.now().toIso8601String(),
+                },
+              ),
+            );
+          } else {
+            throw Exception('No valid image data available for upload');
+          }
+        } else {
+          uploadBytesEstimate = bytes.length;
+          debugPrint('Web/Desktop bytes upload size = ${bytes.length}');
+          uploadTask = ref.putData(
+            bytes,
+            SettableMetadata(
+              contentType: _selectedImageContentType,
+              customMetadata: {
+                'uploadedBy': user.uid,
+                'uploadedAt': DateTime.now().toIso8601String(),
+              },
+            ),
+          );
         }
-        final fileSize = imageFile.lengthSync();
-        debugPrint('Mobile upload: file size = $fileSize');
-        uploadTask = ref.putFile(
-          imageFile,
-          SettableMetadata(
-            customMetadata: {
-              'uploadedBy': user.uid,
-              'uploadedAt': DateTime.now().toIso8601String(),
-            },
-          ),
-        );
       }
 
       // Monitor upload progress
+      var hasStartedUploading = false;
       uploadTask.snapshotEvents.listen(
         (TaskSnapshot snapshot) {
           if (mounted) {
+            if (snapshot.bytesTransferred > 0) {
+              hasStartedUploading = true;
+            }
             final totalBytes = snapshot.totalBytes;
             if (totalBytes <= 0) {
               debugPrint(
@@ -340,13 +435,30 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
       );
 
       // Wait for upload with timeout
-      debugPrint('Waiting for upload to complete...');
-      await uploadTask.timeout(
-        const Duration(seconds: 60),
-        onTimeout: () {
-          throw Exception('Upload timeout - took longer than 60 seconds');
-        },
+      final estimatedMb = uploadBytesEstimate / (1024 * 1024);
+      final timeoutSeconds = (60 + (estimatedMb * 45).ceil())
+          .clamp(180, 900)
+          .toInt();
+      debugPrint(
+        'Waiting for upload to complete (timeout: ${timeoutSeconds}s, size: ${estimatedMb.toStringAsFixed(2)} MB)...',
       );
+      if (isMobilePlatform) {
+        await uploadTask;
+      } else {
+        await uploadTask.timeout(
+          Duration(seconds: timeoutSeconds),
+          onTimeout: () {
+            if (kIsWeb && !hasStartedUploading) {
+              throw Exception(
+                'Upload did not start on web (progress stayed at 0%). Check Firebase Storage CORS, publish Storage rules, and verify browser network access.',
+              );
+            }
+            throw Exception(
+              'Upload timeout - took longer than ${timeoutSeconds}s. Please check your connection and try again.',
+            );
+          },
+        );
+      }
 
       debugPrint('Upload complete, getting download URL...');
 
@@ -363,13 +475,47 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
       debugPrint('=== Image upload error ===');
       debugPrint('Error: $e');
       debugPrint('Stack trace: $st');
+
+      if (e is FirebaseException &&
+          e.code == 'bucket-not-found' &&
+          allowLegacyBucketRetry) {
+        final configuredBucket =
+            (storageOverride ?? FirebaseStorage.instance)
+                .app
+                .options
+                .storageBucket ??
+            '';
+        if (configuredBucket.endsWith('.firebasestorage.app')) {
+          final legacyBucket = configuredBucket.replaceFirst(
+            '.firebasestorage.app',
+            '.appspot.com',
+          );
+          debugPrint('Retrying upload with legacy bucket: $legacyBucket');
+          return _uploadSelectedImageToStorage(
+            storageOverride: FirebaseStorage.instanceFor(
+              bucket: 'gs://$legacyBucket',
+            ),
+            allowLegacyBucketRetry: false,
+          );
+        }
+      }
+
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to upload image: $e'),
-            duration: const Duration(seconds: 5),
-          ),
-        );
+        final message = e.toString();
+        if (kIsWeb &&
+            message.contains(
+              'Upload did not start on web (progress stayed at 0%)',
+            )) {
+          await _showWebUploadTroubleshootingDialog();
+        } else {
+          final userMessage = _buildUploadErrorMessage(e);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(userMessage),
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        }
       }
       return null;
     } finally {
@@ -377,6 +523,57 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
         setState(() => _isUploadingImage = false);
       }
     }
+  }
+
+  Future<void> _showWebUploadTroubleshootingDialog() async {
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Web Image Upload Not Starting'),
+          content: const SingleChildScrollView(
+            child: Text(
+              'Upload progress stayed at 0%. This is usually a Firebase Storage setup issue on web.\n\n'
+              'Please check:\n'
+              '1) Publish Firebase Storage rules\n'
+              '2) Configure Storage CORS for your localhost/app domain\n'
+              '3) Confirm you are signed in and using the correct Firebase project\n\n'
+              'After updating Firebase settings, restart the app and try again.',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  String _buildUploadErrorMessage(Object error) {
+    final raw = error.toString().toLowerCase();
+
+    if (raw.contains('bucket-not-found')) {
+      return 'Firebase Storage bucket not found. Enable Storage in Firebase Console or verify storageBucket in firebase_options.dart.';
+    }
+    if (raw.contains('code: -13040') || raw.contains('storage/canceled')) {
+      return 'Upload was canceled before completion. Keep this page open, check emulator internet, and try again.';
+    }
+    if (raw.contains('storage/unauthorized') ||
+        raw.contains('permission-denied')) {
+      return 'Upload blocked by Firebase rules. Publish Storage rules and sign in again.';
+    }
+    if (raw.contains('storage/retry-limit-exceeded')) {
+      return 'Upload failed after multiple retries. Please check your network and try a smaller image.';
+    }
+    if (raw.contains('timeout')) {
+      return 'Upload took too long. Please check your connection and retry.';
+    }
+    return 'Failed to upload image: $error';
   }
 
   Future<void> _deleteImageFromStorage(String imageUrl) async {
@@ -500,23 +697,27 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
     return Scaffold(
       backgroundColor: isDark ? _kBackgroundDark : _kBackgroundLight,
       appBar: AppBar(
-        backgroundColor: isDark
-            ? _kBackgroundDark.withValues(alpha: 0.9)
-            : _kBackgroundLight.withValues(alpha: 0.92),
-        foregroundColor: isDark ? Colors.white : Colors.black,
+        centerTitle: true,
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         shadowColor: Colors.transparent,
-        centerTitle: true,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text(
-          'Edit Event',
-          style: TextStyle(fontWeight: FontWeight.w800),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Icon(Icons.edit, color: _kPrimaryColor),
+            SizedBox(width: 8),
+            Text('Edit Event', style: TextStyle(fontWeight: FontWeight.w800)),
+          ],
         ),
+        backgroundColor: isDark
+            ? _kBackgroundDark.withValues(alpha: 0.84)
+            : Colors.white.withValues(alpha: 0.86),
+        foregroundColor: isDark ? Colors.white : Colors.black,
       ),
       body: SafeArea(
         child: Form(
@@ -643,38 +844,6 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
                   }
                   return null;
                 },
-              ),
-              const SizedBox(height: 10),
-              Container(
-                height: 132,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
-                  ),
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: Image.network(
-                  'https://lh3.googleusercontent.com/aida-public/AB6AXuBDE6AcMx5b-examgxODuEa_8hoC2vQzHezoIPFOEoQXZbtkk_QtKGaq3p7G5bgylmgSW0gdzKHNQpbfAqtw350O2s7aA9TNq5tQP5Q8BpRMV3ieDtuEAMnDbdbWNArtQfKK6CEs2JfM3YQvkhudM4SLnH3SwPGf9u979GDCAtaY6NogY6-rHhkEaAr_AIMbOZlO_K3XFoGihVdrzurS0sWPPx_CBXixFfh-7ul6iS6dAd_J1GcxYV5ZvfrL8bI7zG7ru4ugl9i7QM',
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, error, stackTrace) {
-                    return Container(
-                      color: isDark
-                          ? Colors.grey.shade900
-                          : Colors.grey.shade100,
-                      alignment: Alignment.center,
-                      child: Text(
-                        'Map preview',
-                        style: TextStyle(
-                          color: isDark
-                              ? Colors.grey.shade400
-                              : Colors.grey.shade600,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    );
-                  },
-                ),
               ),
               const SizedBox(height: 12),
               Row(

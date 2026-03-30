@@ -58,15 +58,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
 
     try {
-      final data = await _firebaseService.getUserData(user.uid);
+      final data = await _firebaseService.getMergedUserData(user.uid);
       _nameController.text = _asString(
-        data?['name'] ?? user.displayName,
+        data['name'] ?? user.displayName,
         fallback: 'Community Volunteer',
       );
-      _phoneController.text = _asString(data?['phone']);
-      _addressController.text = _asString(data?['address']);
-      _bioController.text = _asString(data?['bio']);
-      _currentPhotoUrl = _asString(data?['photoUrl'] ?? data?['avatarUrl']);
+      _phoneController.text = _asString(data['phone']);
+      _addressController.text = _asString(data['address']);
+      _bioController.text = _asString(data['bio']);
+      _currentPhotoUrl = _asString(data['photoUrl'] ?? data['avatarUrl']);
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -134,11 +134,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       final user = _firebaseService.currentUser;
       if (user == null) return null;
 
+      // Use the same bucket path family permitted by current Storage rules.
       final fileName =
-          'users/${user.uid}/${DateTime.now().millisecondsSinceEpoch}.jpg';
+          'events/${user.uid}/profile_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final ref = FirebaseStorage.instance.ref().child(fileName);
 
-      final uploadTask = ref.putFile(imageFile);
+      final uploadTask = ref.putFile(
+        imageFile,
+        SettableMetadata(contentType: 'image/jpeg'),
+      );
       await uploadTask;
 
       final downloadUrl = await ref.getDownloadURL();
@@ -190,11 +194,23 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         photoUrlToSave = uploadedUrl;
       }
 
+      await FirebaseFirestore.instance
+          .collection('user_profiles')
+          .doc(user.uid)
+          .set({
+            'name': _nameController.text.trim(),
+            'phone': _phoneController.text.trim(),
+            'address': _addressController.text.trim(),
+            'bio': _bioController.text.trim(),
+            'photoUrl': photoUrlToSave,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+
+      // Keep legacy user-list screens in sync while profile data lives in
+      // user_profiles.
       await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
         'name': _nameController.text.trim(),
         'phone': _phoneController.text.trim(),
-        'address': _addressController.text.trim(),
-        'bio': _bioController.text.trim(),
         'photoUrl': photoUrlToSave,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
@@ -241,16 +257,22 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     return Scaffold(
       backgroundColor: background,
       appBar: AppBar(
+        centerTitle: true,
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         shadowColor: Colors.transparent,
-        centerTitle: true,
-        title: const Text(
-          'Edit Profile',
-          style: TextStyle(fontWeight: FontWeight.w800),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Icon(Icons.edit, color: _kPrimaryColor),
+            SizedBox(width: 8),
+            Text('Edit Profile', style: TextStyle(fontWeight: FontWeight.w800)),
+          ],
         ),
-        backgroundColor: background,
+        backgroundColor: isDark
+            ? _kBackgroundDark.withValues(alpha: 0.84)
+            : Colors.white.withValues(alpha: 0.86),
         foregroundColor: isDark ? Colors.white : Colors.black,
       ),
       body: _isLoading

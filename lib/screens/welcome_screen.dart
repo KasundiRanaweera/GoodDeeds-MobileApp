@@ -31,45 +31,37 @@ class WelcomeScreen extends StatelessWidget {
                       vertical: 16,
                     ),
                     child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Row(
-                          children: [
-                            Container(
-                              width: 44,
-                              height: 44,
-                              decoration: BoxDecoration(
-                                color: _kPrimaryColor,
-                                borderRadius: BorderRadius.circular(14),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: _kPrimaryColor.withValues(
-                                      alpha: 0.35,
-                                    ),
-                                    blurRadius: 16,
-                                    offset: const Offset(0, 8),
-                                  ),
-                                ],
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: _kPrimaryColor,
+                            borderRadius: BorderRadius.circular(14),
+                            boxShadow: [
+                              BoxShadow(
+                                color: _kPrimaryColor.withValues(alpha: 0.35),
+                                blurRadius: 16,
+                                offset: const Offset(0, 8),
                               ),
-                              child: const Icon(
-                                Icons.volunteer_activism,
-                                color: Colors.black,
-                                size: 26,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Text(
-                              'GoodDeeds',
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: isDark ? Colors.white : Colors.black,
-                              ),
-                            ),
-                          ],
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.volunteer_activism,
+                            color: Colors.black,
+                            size: 26,
+                          ),
                         ),
-                        // Placeholder for future actions (e.g., theme toggle)
-                        const SizedBox(width: 44),
+                        const SizedBox(width: 12),
+                        Text(
+                          'GoodDeeds',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.white : Colors.black,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -84,7 +76,7 @@ class WelcomeScreen extends StatelessWidget {
                           'Track your good deeds.\nInspire the world.',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            color: _kPrimaryColor,
+                            color: isDark ? Colors.grey[400] : Colors.grey[600],
                             fontWeight: FontWeight.bold,
                             letterSpacing: 1.2,
                             fontSize: 14,

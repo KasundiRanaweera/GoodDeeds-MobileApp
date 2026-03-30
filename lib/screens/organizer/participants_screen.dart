@@ -68,12 +68,17 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
     return null;
   }
 
-  bool _isEventCompleted(Map<String, dynamic> eventData) {
+  bool _isAttendanceOpen(Map<String, dynamic> eventData) {
     final eventDate = _asDate(
       eventData['eventDate'] ?? eventData['date'] ?? eventData['startDate'],
     );
     if (eventDate == null) return false;
-    return DateTime.now().isAfter(eventDate);
+
+    // Attendance is allowed on the event day (any time) and after.
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final eventDay = DateTime(eventDate.year, eventDate.month, eventDate.day);
+    return !today.isBefore(eventDay);
   }
 
   Future<List<_ParticipantVm>> _loadParticipants(
@@ -120,7 +125,7 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
       final awardedParticipantIds = _asStringList(
         data['awardedParticipantIds'],
       ).toSet();
-      final eventCompleted = _isEventCompleted(data);
+      final attendanceOpen = _isAttendanceOpen(data);
       final impactPoints = _asInt(
         data['impactPoints'] ?? data['points'] ?? data['rewardPoints'],
       );
@@ -138,7 +143,7 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
       );
 
       if (checkedIn) {
-        if (!eventCompleted) {
+        if (!attendanceOpen) {
           return;
         }
         checkedInIds.add(participantUid);
@@ -241,6 +246,35 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
     });
   }
 
+  PreferredSizeWidget _buildParticipantsAppBar({
+    required bool isDark,
+    required VoidCallback onBack,
+  }) {
+    return AppBar(
+      centerTitle: true,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      surfaceTintColor: Colors.transparent,
+      shadowColor: Colors.transparent,
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back),
+        onPressed: onBack,
+      ),
+      title: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: const [
+          Icon(Icons.people, color: _kPrimaryColor),
+          SizedBox(width: 8),
+          Text('Participants', style: TextStyle(fontWeight: FontWeight.w800)),
+        ],
+      ),
+      backgroundColor: isDark
+          ? _kBackgroundDark.withValues(alpha: 0.84)
+          : Colors.white.withValues(alpha: 0.86),
+      foregroundColor: isDark ? Colors.white : Colors.black,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -249,25 +283,15 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
     if (eventId.isEmpty) {
       return Scaffold(
         backgroundColor: isDark ? _kBackgroundDark : _kBackgroundLight,
-        appBar: AppBar(
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () {
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(
-                  builder: (_) => const OrganizerDashboardScreen(),
-                ),
-              );
-            },
-          ),
-          title: const Text('Participants'),
-          centerTitle: true,
-          backgroundColor: isDark ? _kBackgroundDark : _kBackgroundLight,
-          foregroundColor: isDark ? Colors.white : Colors.black,
-          elevation: 0,
-          scrolledUnderElevation: 0,
-          surfaceTintColor: Colors.transparent,
-          shadowColor: Colors.transparent,
+        appBar: _buildParticipantsAppBar(
+          isDark: isDark,
+          onBack: () {
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(
+                builder: (_) => const OrganizerDashboardScreen(),
+              ),
+            );
+          },
         ),
         body: Center(
           child: Padding(
@@ -287,24 +311,9 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
 
     return Scaffold(
       backgroundColor: isDark ? _kBackgroundDark : _kBackgroundLight,
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: const Text(
-          'Participants',
-          style: TextStyle(fontWeight: FontWeight.w800),
-        ),
-        centerTitle: true,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        surfaceTintColor: Colors.transparent,
-        shadowColor: Colors.transparent,
-        backgroundColor: isDark
-            ? _kBackgroundDark.withValues(alpha: 0.85)
-            : _kBackgroundLight.withValues(alpha: 0.9),
-        foregroundColor: isDark ? Colors.white : Colors.black,
+      appBar: _buildParticipantsAppBar(
+        isDark: isDark,
+        onBack: () => Navigator.of(context).pop(),
       ),
       body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
         stream: FirebaseFirestore.instance
@@ -335,7 +344,7 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
 
           final eventData = eventSnapshot.data!.data() ?? <String, dynamic>{};
           final liveEventTitle = _eventTitleFromData(eventData);
-          final eventCompleted = _isEventCompleted(eventData);
+          final attendanceOpen = _isAttendanceOpen(eventData);
           final participantIds = _asStringList(eventData['participantIds']);
           final checkedInIds = _asStringList(eventData['checkedInIds']).toSet();
 
@@ -377,7 +386,7 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      if (!eventCompleted)
+                      if (!attendanceOpen)
                         Container(
                           margin: const EdgeInsets.only(bottom: 12),
                           padding: const EdgeInsets.all(12),
@@ -388,7 +397,7 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Text(
-                            'Attendance can be marked only after the event date.',
+                            'Attendance can be marked on the event date or after.',
                             style: TextStyle(
                               fontWeight: FontWeight.w700,
                               color: isDark
@@ -659,13 +668,13 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                                   if (isCheckedIn)
                                     TextButton(
                                       onPressed: () async {
-                                        if (!eventCompleted) {
+                                        if (!attendanceOpen) {
                                           ScaffoldMessenger.of(
                                             context,
                                           ).showSnackBar(
                                             const SnackBar(
                                               content: Text(
-                                                'Attendance can be updated after the event is completed.',
+                                                'Attendance can be updated on the event date or after.',
                                               ),
                                             ),
                                           );
@@ -691,13 +700,13 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                                       children: [
                                         InkWell(
                                           onTap: () async {
-                                            if (!eventCompleted) {
+                                            if (!attendanceOpen) {
                                               ScaffoldMessenger.of(
                                                 context,
                                               ).showSnackBar(
                                                 const SnackBar(
                                                   content: Text(
-                                                    'Attendance can be updated after the event is completed.',
+                                                    'Attendance can be updated on the event date or after.',
                                                   ),
                                                 ),
                                               );

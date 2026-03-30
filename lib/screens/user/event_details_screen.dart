@@ -141,19 +141,26 @@ class EventDetailsScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: background,
       appBar: AppBar(
-        backgroundColor: isDark
-            ? _kBackgroundDark.withValues(alpha: 0.92)
-            : Colors.white.withValues(alpha: 0.92),
-        foregroundColor: isDark ? Colors.white : Colors.black,
+        centerTitle: true,
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         shadowColor: Colors.transparent,
-        title: const Text(
-          'Event Details',
-          style: TextStyle(fontWeight: FontWeight.w700),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Icon(Icons.info_outline, color: _kPrimaryColor),
+            SizedBox(width: 8),
+            Text(
+              'Event Details',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
+          ],
         ),
-        centerTitle: false,
+        backgroundColor: isDark
+            ? _kBackgroundDark.withValues(alpha: 0.84)
+            : Colors.white.withValues(alpha: 0.86),
+        foregroundColor: isDark ? Colors.white : Colors.black,
         actions: [
           IconButton(
             onPressed: () {

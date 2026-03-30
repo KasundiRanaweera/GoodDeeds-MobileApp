@@ -26,12 +26,12 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
   List<Map<String, dynamic>> _filterByCategory(
     List<Map<String, dynamic>> events,
   ) {
-    final selected = _categories[_selectedCategory];
+    final selected = _categories[_selectedCategory].trim();
     if (selected == 'All') return events;
 
     return events.where((event) {
       final raw = event['category'] ?? event['type'] ?? event['eventCategory'];
-      final value = (raw?.toString() ?? '').toLowerCase();
+      final value = (raw?.toString() ?? '').trim().toLowerCase();
       return value == selected.toLowerCase();
     }).toList();
   }
@@ -141,15 +141,25 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
     return Scaffold(
       backgroundColor: background,
       appBar: AppBar(
-        title: const Text('Discover Events'),
         centerTitle: true,
         elevation: 0,
         scrolledUnderElevation: 0,
         shadowColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Icon(Icons.explore, color: _kPrimaryColor),
+            SizedBox(width: 8),
+            Text(
+              'Discover Events',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
+          ],
+        ),
         backgroundColor: isDark
             ? _kBackgroundDark.withValues(alpha: 0.84)
-            : Colors.white.withValues(alpha: 0.84),
+            : Colors.white.withValues(alpha: 0.86),
         foregroundColor: isDark ? Colors.white : Colors.black,
       ),
       body: SafeArea(

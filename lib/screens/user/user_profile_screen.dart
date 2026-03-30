@@ -148,18 +148,22 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       backgroundColor: isDark ? _kBackgroundDark : _kBackgroundLight,
       appBar: AppBar(
         centerTitle: true,
-        title: const Text(
-          'My Profile',
-          style: TextStyle(fontWeight: FontWeight.w800),
-        ),
-        backgroundColor: isDark
-            ? _kBackgroundDark.withValues(alpha: 0.86)
-            : _kBackgroundLight.withValues(alpha: 0.9),
-        foregroundColor: isDark ? Colors.white : Colors.black,
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         shadowColor: Colors.transparent,
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Icon(Icons.person, color: _kPrimaryColor),
+            SizedBox(width: 8),
+            Text('My Profile', style: TextStyle(fontWeight: FontWeight.w800)),
+          ],
+        ),
+        backgroundColor: isDark
+            ? _kBackgroundDark.withValues(alpha: 0.84)
+            : Colors.white.withValues(alpha: 0.86),
+        foregroundColor: isDark ? Colors.white : Colors.black,
         actions: [
           IconButton(
             onPressed: () async {
@@ -185,7 +189,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       body: FutureBuilder<Map<String, dynamic>?>(
         future: _firebaseService.currentUser == null
             ? Future.value(null)
-            : _firebaseService.getUserData(_firebaseService.currentUser!.uid),
+            : _firebaseService.getMergedUserData(
+                _firebaseService.currentUser!.uid,
+              ),
         builder: (context, userSnapshot) {
           if (userSnapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -201,7 +207,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           final bio = _asString(
             userData['bio'] ?? userData['about'] ?? userData['description'],
             fallback:
-                'Environmental enthusiast and community volunteer dedicated to urban greening.',
+                'Passionate about helping the community, actively participating in volunteer activities, and striving to make a meaningful and lasting positive impact on society.',
           );
           final photoUrl = _asString(
             userData['photoUrl'] ?? userData['avatarUrl'],
@@ -277,9 +283,11 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                                   OutlinedButton.icon(
                                     onPressed: _signOut,
                                     style: OutlinedButton.styleFrom(
-                                      foregroundColor: Colors.red.shade400,
+                                      foregroundColor: _kPrimaryColor,
                                       side: BorderSide(
-                                        color: Colors.red.shade300,
+                                        color: _kPrimaryColor.withValues(
+                                          alpha: 0.5,
+                                        ),
                                       ),
                                     ),
                                     icon: const Icon(Icons.logout, size: 18),
@@ -430,11 +438,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                                   child: _ProfileStatCard(
                                     title: 'Impact Points',
                                     value: impactPoints.toString(),
-                                    subtitle: '15% this month',
-                                    subtitleColor: isDark
-                                        ? const Color(0xFF59D99D)
-                                        : const Color(0xFF1C8D55),
-                                    icon: Icons.trending_up,
                                     valueColor: _kPrimaryColor,
                                     isDark: isDark,
                                   ),
@@ -444,10 +447,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                                   child: _ProfileStatCard(
                                     title: 'Events Attended',
                                     value: eventsAttended.toString(),
-                                    subtitle:
-                                        '${(eventsAttended / 6).ceil()} new planned',
-                                    subtitleColor: _kPrimaryColor,
-                                    icon: Icons.event_available,
                                     valueColor: isDark
                                         ? Colors.white
                                         : Colors.black,
@@ -631,18 +630,12 @@ class _ProfileStatCard extends StatelessWidget {
   const _ProfileStatCard({
     required this.title,
     required this.value,
-    required this.subtitle,
-    required this.subtitleColor,
-    required this.icon,
     required this.valueColor,
     required this.isDark,
   });
 
   final String title;
   final String value;
-  final String subtitle;
-  final Color subtitleColor;
-  final IconData icon;
   final Color valueColor;
   final bool isDark;
 
@@ -681,23 +674,6 @@ class _ProfileStatCard extends StatelessWidget {
               fontWeight: FontWeight.w900,
               color: valueColor,
             ),
-          ),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              Icon(icon, size: 14, color: subtitleColor),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text(
-                  subtitle,
-                  style: TextStyle(
-                    color: subtitleColor,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
           ),
         ],
       ),

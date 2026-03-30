@@ -102,16 +102,25 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     return Scaffold(
       backgroundColor: isDark ? _kBackgroundDark : _kBackgroundLight,
       appBar: AppBar(
-        title: const Text(
-          'Community Impact',
-          style: TextStyle(fontWeight: FontWeight.w800),
-        ),
         centerTitle: true,
-        elevation: 1,
+        elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         shadowColor: Colors.transparent,
-        backgroundColor: isDark ? Colors.grey.shade900 : Colors.white,
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Icon(Icons.groups, color: _kPrimaryColor),
+            SizedBox(width: 8),
+            Text(
+              'Community Impact',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
+          ],
+        ),
+        backgroundColor: isDark
+            ? _kBackgroundDark.withValues(alpha: 0.84)
+            : Colors.white.withValues(alpha: 0.86),
         foregroundColor: isDark ? Colors.white : Colors.black,
       ),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -714,18 +723,22 @@ class PublicUserDetailScreen extends StatelessWidget {
       backgroundColor: isDark ? _kBackgroundDark : _kBackgroundLight,
       appBar: AppBar(
         centerTitle: true,
-        title: const Text(
-          'User Profile',
-          style: TextStyle(fontWeight: FontWeight.w800),
-        ),
-        backgroundColor: isDark
-            ? _kBackgroundDark.withValues(alpha: 0.85)
-            : _kBackgroundLight.withValues(alpha: 0.9),
-        foregroundColor: isDark ? Colors.white : Colors.black,
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         shadowColor: Colors.transparent,
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Icon(Icons.person, color: _kPrimaryColor),
+            SizedBox(width: 8),
+            Text('User Profile', style: TextStyle(fontWeight: FontWeight.w800)),
+          ],
+        ),
+        backgroundColor: isDark
+            ? _kBackgroundDark.withValues(alpha: 0.84)
+            : Colors.white.withValues(alpha: 0.86),
+        foregroundColor: isDark ? Colors.white : Colors.black,
       ),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: uid.isEmpty
