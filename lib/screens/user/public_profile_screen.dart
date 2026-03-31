@@ -670,7 +670,7 @@ class PublicUserDetailScreen extends StatelessWidget {
           ? '1 minute ago'
           : '${diff.inMinutes} minutes ago';
     }
-    return 'Just now';
+    return '';
   }
 
   IconData _activityIcon(Map<String, dynamic> event) {
@@ -748,9 +748,18 @@ class PublicUserDetailScreen extends StatelessWidget {
                   .where('participantIds', arrayContains: uid)
                   .snapshots(),
         builder: (context, snapshot) {
-          final activityEvents = (snapshot.data?.docs ?? const [])
+          final allEvents = (snapshot.data?.docs ?? const [])
               .map((doc) => {'id': doc.id, ...doc.data()})
               .toList();
+
+          // Only include events where the user is in awardedParticipantIds
+          final activityEvents = allEvents.where((event) {
+            final awarded = event['awardedParticipantIds'];
+            if (awarded is List) {
+              return awarded.contains(uid);
+            }
+            return false;
+          }).toList();
 
           activityEvents.sort((a, b) {
             final aDate = _asDate(

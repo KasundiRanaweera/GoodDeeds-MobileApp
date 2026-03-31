@@ -23,18 +23,39 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
   final FirebaseService _firebaseService = FirebaseService();
   late final List<String> _categories = kDiscoverEventCategories;
   int _selectedCategory = 0;
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
 
   List<Map<String, dynamic>> _filterByCategory(
     List<Map<String, dynamic>> events,
   ) {
     final selected = _categories[_selectedCategory].trim();
-    if (selected == 'All') return events;
+    List<Map<String, dynamic>> filtered = events;
+    if (selected != 'All') {
+      filtered = filtered.where((event) {
+        final raw =
+            event['category'] ?? event['type'] ?? event['eventCategory'];
+        final value = (raw?.toString() ?? '').trim().toLowerCase();
+        return value == selected.toLowerCase();
+      }).toList();
+    }
+    if (_searchQuery.trim().isNotEmpty) {
+      final query = _searchQuery.trim().toLowerCase();
+      filtered = filtered.where((event) {
+        final location =
+            (event['location'] ?? event['venue'] ?? event['address'] ?? '')
+                .toString()
+                .toLowerCase();
+        return location.contains(query);
+      }).toList();
+    }
+    return filtered;
+  }
 
-    return events.where((event) {
-      final raw = event['category'] ?? event['type'] ?? event['eventCategory'];
-      final value = (raw?.toString() ?? '').trim().toLowerCase();
-      return value == selected.toLowerCase();
-    }).toList();
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   String _asString(dynamic value, {String fallback = ''}) {
@@ -186,6 +207,60 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
                 itemCount: _categories.length,
               ),
             ),
+            // Search Bar (moved below category row)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: TextField(
+                controller: _searchController,
+                onChanged: (value) {
+                  setState(() {
+                    _searchQuery = value;
+                  });
+                },
+                decoration: InputDecoration(
+                  hintText: 'Search by location...',
+                  prefixIcon: const Icon(Icons.search, color: _kPrimaryColor),
+                  filled: true,
+                  fillColor: isDark ? Colors.grey[900] : Colors.white,
+                  contentPadding: const EdgeInsets.symmetric(
+                    vertical: 0,
+                    horizontal: 16,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: _kPrimaryColor.withValues(alpha: 0.18),
+                    ),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: _kPrimaryColor.withValues(alpha: 0.18),
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: _kPrimaryColor, width: 1.5),
+                  ),
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, color: Colors.grey),
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() {
+                              _searchQuery = '';
+                            });
+                          },
+                        )
+                      : null,
+                ),
+                style: TextStyle(
+                  color: isDark ? Colors.white : Colors.black,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
             Expanded(
               child: StreamBuilder<List<Map<String, dynamic>>>(
                 stream: _firebaseService.streamOrganizerEvents(),

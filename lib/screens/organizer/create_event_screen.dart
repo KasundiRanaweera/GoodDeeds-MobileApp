@@ -53,16 +53,14 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   String _selectedImageExtension = 'jpg';
   String _selectedImageContentType = 'image/jpeg';
 
-  bool get _isDesktopPlatform =>
-      !kIsWeb &&
-      (defaultTargetPlatform == TargetPlatform.windows ||
-          defaultTargetPlatform == TargetPlatform.linux ||
-          defaultTargetPlatform == TargetPlatform.macOS);
-
   bool get _canUseCamera =>
-      kIsWeb ||
       defaultTargetPlatform == TargetPlatform.android ||
       defaultTargetPlatform == TargetPlatform.iOS;
+
+  bool get _isMobileUploadPlatform =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS);
 
   @override
   void initState() {
@@ -113,6 +111,16 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   }
 
   Future<void> _selectImage() async {
+    if (!_isMobileUploadPlatform) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Image uploads are supported on mobile only.'),
+        ),
+      );
+      return;
+    }
+
     await showModalBottomSheet<void>(
       context: context,
       builder: (sheetContext) {
@@ -142,11 +150,6 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                     Navigator.pop(sheetContext);
                     await _pickImageFromSource(ImageSource.camera);
                   },
-                )
-              else
-                const ListTile(
-                  leading: Icon(Icons.camera_alt_outlined, color: Colors.grey),
-                  title: Text('Camera (not available on desktop)'),
                 ),
             ],
           ),
@@ -199,6 +202,16 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   }
 
   Future<void> _pickImageFromSource(ImageSource source) async {
+    if (!_isMobileUploadPlatform) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Image uploads are supported on mobile only.'),
+        ),
+      );
+      return;
+    }
+
     try {
       final image = await _imagePicker.pickImage(
         source: source,
@@ -215,11 +228,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       if (!mounted) return;
       setState(() {
         _selectedImageBytes = optimizedBytes;
-        _selectedImage = kIsWeb || _isDesktopPlatform ? null : File(image.path);
-        if (kIsWeb || _isDesktopPlatform) {
-          _selectedImageExtension = 'jpg';
-          _selectedImageContentType = 'image/jpeg';
-        }
+        _selectedImage = File(image.path);
       });
     } on PlatformException catch (e) {
       if (!mounted) return;
@@ -262,68 +271,30 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       debugPrint('Storage bucket: ${storage.app.options.storageBucket}');
 
       final UploadTask uploadTask;
-      int uploadBytesEstimate = 0;
-      final isMobilePlatform = !kIsWeb && !_isDesktopPlatform;
-
-      final bytes = _selectedImageBytes;
       final imageFile = _selectedImage;
-      if (isMobilePlatform && imageFile != null && imageFile.existsSync()) {
-        final fileSize = imageFile.lengthSync();
-        uploadBytesEstimate = fileSize;
-        debugPrint('Mobile file upload: file size = $fileSize');
-        uploadTask = ref.putFile(
-          imageFile,
-          SettableMetadata(
-            contentType: _selectedImageContentType,
-            customMetadata: {
-              'uploadedBy': user.uid,
-              'uploadedAt': DateTime.now().toIso8601String(),
-            },
-          ),
-        );
-      } else {
-        if (bytes == null || bytes.isEmpty) {
-          if (imageFile != null && imageFile.existsSync()) {
-            final fileSize = imageFile.lengthSync();
-            uploadBytesEstimate = fileSize;
-            debugPrint('Fallback file upload: file size = $fileSize');
-            uploadTask = ref.putFile(
-              imageFile,
-              SettableMetadata(
-                contentType: _selectedImageContentType,
-                customMetadata: {
-                  'uploadedBy': user.uid,
-                  'uploadedAt': DateTime.now().toIso8601String(),
-                },
-              ),
-            );
-          } else {
-            throw Exception('No valid image data available for upload');
-          }
-        } else {
-          uploadBytesEstimate = bytes.length;
-          debugPrint('Web/Desktop bytes upload size = ${bytes.length}');
-          uploadTask = ref.putData(
-            bytes,
-            SettableMetadata(
-              contentType: _selectedImageContentType,
-              customMetadata: {
-                'uploadedBy': user.uid,
-                'uploadedAt': DateTime.now().toIso8601String(),
-              },
-            ),
-          );
-        }
+      if (!_isMobileUploadPlatform) {
+        throw Exception('Image uploads are supported on mobile only.');
       }
+      if (imageFile == null || !imageFile.existsSync()) {
+        throw Exception('No valid image file available for upload.');
+      }
+      final uploadBytesEstimate = imageFile.lengthSync();
+      debugPrint('Mobile file upload: file size = $uploadBytesEstimate');
+      uploadTask = ref.putFile(
+        imageFile,
+        SettableMetadata(
+          contentType: _selectedImageContentType,
+          customMetadata: {
+            'uploadedBy': user.uid,
+            'uploadedAt': DateTime.now().toIso8601String(),
+          },
+        ),
+      );
 
       // Monitor upload progress
-      var hasStartedUploading = false;
       uploadTask.snapshotEvents.listen(
         (TaskSnapshot snapshot) {
           if (mounted) {
-            if (snapshot.bytesTransferred > 0) {
-              hasStartedUploading = true;
-            }
             final totalBytes = snapshot.totalBytes;
             if (totalBytes <= 0) {
               debugPrint(
@@ -349,23 +320,14 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       debugPrint(
         'Waiting for upload to complete (timeout: ${timeoutSeconds}s, size: ${estimatedMb.toStringAsFixed(2)} MB)...',
       );
-      if (isMobilePlatform) {
-        await uploadTask;
-      } else {
-        await uploadTask.timeout(
-          Duration(seconds: timeoutSeconds),
-          onTimeout: () {
-            if (kIsWeb && !hasStartedUploading) {
-              throw Exception(
-                'Upload did not start on web (progress stayed at 0%). Check Firebase Storage CORS, publish Storage rules, and verify browser network access.',
-              );
-            }
-            throw Exception(
-              'Upload timeout - took longer than ${timeoutSeconds}s. Please check your connection and try again.',
-            );
-          },
-        );
-      }
+      await uploadTask.timeout(
+        Duration(seconds: timeoutSeconds),
+        onTimeout: () {
+          throw Exception(
+            'Upload timeout - took longer than ${timeoutSeconds}s. Please check your connection and try again.',
+          );
+        },
+      );
 
       debugPrint('Upload complete, getting download URL...');
 
@@ -408,21 +370,13 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       }
 
       if (mounted) {
-        final message = e.toString();
-        if (kIsWeb &&
-            message.contains(
-              'Upload did not start on web (progress stayed at 0%)',
-            )) {
-          await _showWebUploadTroubleshootingDialog();
-        } else {
-          final userMessage = _buildUploadErrorMessage(e);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(userMessage),
-              duration: const Duration(seconds: 5),
-            ),
-          );
-        }
+        final userMessage = _buildUploadErrorMessage(e);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(userMessage),
+            duration: const Duration(seconds: 5),
+          ),
+        );
       }
       return null;
     } finally {
@@ -430,35 +384,6 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         setState(() => _isUploadingImage = false);
       }
     }
-  }
-
-  Future<void> _showWebUploadTroubleshootingDialog() async {
-    if (!mounted) return;
-
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Web Image Upload Not Starting'),
-          content: const SingleChildScrollView(
-            child: Text(
-              'Upload progress stayed at 0%. This is usually a Firebase Storage setup issue on web.\n\n'
-              'Please check:\n'
-              '1) Publish Firebase Storage rules\n'
-              '2) Configure Storage CORS for your localhost/app domain\n'
-              '3) Confirm you are signed in and using the correct Firebase project\n\n'
-              'After updating Firebase settings, restart the app and try again.',
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('OK'),
-            ),
-          ],
-        );
-      },
-    );
   }
 
   String _buildUploadErrorMessage(Object error) {
@@ -601,9 +526,23 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       debugPrint('Event created successfully with ID: ${docRef.id}');
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Event created successfully.')),
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: const Text('Success'),
+            content: const Text('Event created successfully.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('OK'),
+              ),
+            ],
+          );
+        },
       );
+      if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const OrganizerDashboardScreen()),
       );
@@ -699,7 +638,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              _label('Organizer Name'),
+              _label('Organization Name'),
               _field(
                 controller: _organizerNameController,
                 hintText: 'e.g. Green Earth Foundation',
@@ -714,7 +653,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               _label('Event Title'),
               _field(
                 controller: _eventTitleController,
-                hintText: 'e.g. Community Tech Meetup',
+                hintText: 'e.g. Beach Cleanup Drive',
                 validator: (value) {
                   if ((value ?? '').trim().isEmpty) {
                     return 'Event title is required';
@@ -726,7 +665,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               _label('Description'),
               _field(
                 controller: _descriptionController,
-                hintText: 'What is this event about?',
+                hintText: 'What is the event about?',
                 minLines: 5,
                 maxLines: 6,
                 validator: (value) {

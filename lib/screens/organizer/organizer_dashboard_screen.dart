@@ -390,15 +390,6 @@ class _OrganizerDashboardScreenState extends State<OrganizerDashboardScreen> {
                         final status = _statusForEvent(event);
                         final canDelete = status == 'active';
 
-                        final organizerPhone = _asString(
-                          event['contactNumber'] ??
-                              event['organizerPhone'] ??
-                              event['createdByPhone'],
-                        );
-                        final organizerEmail = _asString(
-                          event['organizerEmail'] ?? event['createdByEmail'],
-                        );
-
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 16),
                           child: Container(
@@ -642,46 +633,6 @@ class _OrganizerDashboardScreenState extends State<OrganizerDashboardScreen> {
                                           ),
                                         ],
                                       ),
-
-                                      // Organizer Contact Info
-                                      if (organizerPhone.isNotEmpty ||
-                                          organizerEmail.isNotEmpty) ...[
-                                        const SizedBox(height: 14),
-                                        Divider(
-                                          color: isDark
-                                              ? Colors.grey.shade800
-                                              : Colors.grey.shade200,
-                                          height: 1,
-                                        ),
-                                        const SizedBox(height: 12),
-                                        Text(
-                                          'Organizer Contact',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w700,
-                                            color: isDark
-                                                ? Colors.grey.shade400
-                                                : Colors.grey.shade600,
-                                            letterSpacing: 0.5,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 8),
-                                        if (organizerPhone.isNotEmpty)
-                                          _EventDetailRow(
-                                            icon: Icons.phone,
-                                            text: organizerPhone,
-                                            isDark: isDark,
-                                          ),
-                                        if (organizerPhone.isNotEmpty &&
-                                            organizerEmail.isNotEmpty)
-                                          const SizedBox(height: 6),
-                                        if (organizerEmail.isNotEmpty)
-                                          _EventDetailRow(
-                                            icon: Icons.email,
-                                            text: organizerEmail,
-                                            isDark: isDark,
-                                          ),
-                                      ],
 
                                       const SizedBox(height: 16),
 

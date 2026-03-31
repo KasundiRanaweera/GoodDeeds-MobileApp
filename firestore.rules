@@ -79,29 +79,39 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      // Needed by community listing and profile rendering.
-      allow read: if isSignedIn();
+      // Anyone can read user docs.
+      allow read: if true;
       allow create: if isOwner(userId);
       allow update: if isOwner(userId) || isOrganizerAttendanceRewardUpdate();
       allow delete: if false;
     }
 
     match /user_profiles/{userId} {
-      // User profiles are shown publicly in community/public profile screens.
-      allow read: if isSignedIn();
+      // Anyone can read user_profile docs.
+      allow read: if true;
       allow create: if isOwner(userId);
       allow update: if isOwner(userId);
       allow delete: if false;
     }
 
     match /events/{eventId} {
-      allow read: if isSignedIn();
+      // Anyone can read event docs.
+      allow read: if true;
 
       // Event creation is organizer-only.
       allow create: if isOrganizer();
 
-      // Event owner can update/delete their own events.
-      allow update, delete: if isSignedIn() && resource.data.createdByUid == request.auth.uid;
+      // Volunteers can join/leave events (update only participantIds, participantsCount, updatedAt).
+      allow update: if isSignedIn() && 
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['participantIds', 'participantsCount', 'updatedAt']);
+
+      // Organizers can mark attendance (update checkedInIds, awardedParticipantIds, updatedAt).
+      allow update: if isOrganizer() && 
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['checkedInIds', 'awardedParticipantIds', 'updatedAt']);
+
+      // Event owner can fully update/delete their own events.
+      allow update: if isSignedIn() && resource.data.createdByUid == request.auth.uid;
+      allow delete: if isSignedIn() && (resource.data.createdByUid == request.auth.uid || isOrganizer());
     }
   }
 }

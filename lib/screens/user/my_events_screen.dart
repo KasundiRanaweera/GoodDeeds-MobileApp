@@ -154,15 +154,35 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
       event['eventDate'] ?? event['date'] ?? event['startDate'],
     );
     if (date == null || date.isAfter(DateTime.now())) return 'Joined';
-    return 'Completed';
+
+    final checkedInIds = (event['checkedInIds'] as List<dynamic>? ?? const [])
+        .map((e) => e.toString())
+        .toSet();
+    final awardedIds =
+        (event['awardedParticipantIds'] as List<dynamic>? ?? const [])
+            .map((e) => e.toString())
+            .toSet();
+
+    if (awardedIds.contains(uid)) {
+      return 'Points Earned';
+    }
+    if (checkedInIds.contains(uid)) {
+      return 'Attended';
+    }
+    return 'Missed';
   }
 
   Color _statusBackground(String status, bool isDark) {
     switch (status) {
       case 'Joined':
         return _kPrimaryColor.withValues(alpha: 0.15);
-      case 'Completed':
+      case 'Points Earned':
+        return _kPrimaryColor.withValues(alpha: isDark ? 0.2 : 0.28);
+      case 'Attended':
         return _kPrimaryColor.withValues(alpha: isDark ? 0.12 : 0.2);
+      case 'Missed':
+        return (isDark ? Colors.orange.shade700 : Colors.orange.shade100)
+            .withValues(alpha: isDark ? 0.4 : 1);
       default:
         return isDark ? Colors.grey.shade800 : Colors.grey.shade200;
     }
@@ -172,8 +192,12 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
     switch (status) {
       case 'Joined':
         return _kPrimaryColor;
-      case 'Completed':
+      case 'Points Earned':
+        return isDark ? Colors.lightGreenAccent : Colors.green.shade900;
+      case 'Attended':
         return isDark ? _kPrimaryColor : Colors.black87;
+      case 'Missed':
+        return isDark ? Colors.orange.shade200 : Colors.orange.shade900;
       default:
         return isDark ? Colors.grey.shade400 : Colors.grey.shade600;
     }
@@ -475,7 +499,7 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
                                         ),
                                       ],
                                     ),
-                                    if (status == 'Completed') ...[
+                                    if (status == 'Points Earned') ...[
                                       const SizedBox(height: 6),
                                       Row(
                                         children: [
@@ -486,9 +510,55 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
                                           ),
                                           const SizedBox(width: 4),
                                           Text(
-                                            'Event completed',
+                                            'Attendance verified. Points credited.',
                                             style: const TextStyle(
                                               color: _kPrimaryColor,
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                    if (status == 'Attended') ...[
+                                      const SizedBox(height: 6),
+                                      Row(
+                                        children: [
+                                          const Icon(
+                                            Icons.verified,
+                                            size: 14,
+                                            color: _kPrimaryColor,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            'Attendance marked. Waiting for points.',
+                                            style: const TextStyle(
+                                              color: _kPrimaryColor,
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                    if (status == 'Missed') ...[
+                                      const SizedBox(height: 6),
+                                      Row(
+                                        children: [
+                                          Icon(
+                                            Icons.info_outline,
+                                            size: 14,
+                                            color: isDark
+                                                ? Colors.orange.shade200
+                                                : Colors.orange.shade800,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            'Not attended. No points awarded.',
+                                            style: TextStyle(
+                                              color: isDark
+                                                  ? Colors.orange.shade200
+                                                  : Colors.orange.shade800,
                                               fontWeight: FontWeight.w700,
                                               fontSize: 12,
                                             ),

@@ -22,7 +22,6 @@ class _CommunityScreenState extends State<CommunityScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   String _query = '';
-  String _roleFilter = 'Volunteer';
   String _pointsFilter = 'All';
 
   @override
@@ -51,11 +50,30 @@ class _CommunityScreenState extends State<CommunityScreen> {
         .toUpperCase();
   }
 
+  bool _isActiveUser(Map<String, dynamic> user) {
+    final deletionFlag =
+        user['isDeleted'] == true ||
+        _asString(user['isDeleted']).toLowerCase() == 'true';
+    final status = _asString(
+      user['accountStatus'] ?? user['status'],
+    ).toLowerCase();
+    final statusDeleted =
+        status == 'deleted' || status == 'inactive' || status == 'disabled';
+
+    final hasEmail = _asString(user['email']).isNotEmpty;
+    final hasId = _asString(
+      user['authUid'] ?? user['uid'] ?? user['userId'] ?? user['id'],
+    ).isNotEmpty;
+
+    return !deletionFlag && !statusDeleted && hasEmail && hasId;
+  }
+
   List<Map<String, dynamic>> _filteredUsers(List<Map<String, dynamic>> users) {
     final q = _query.trim().toLowerCase();
     final filtered = users.where((user) {
+      // Show only Volunteers
       final role = _asString(user['role']).toLowerCase();
-      if (_roleFilter != 'All' && role != _roleFilter.toLowerCase()) {
+      if (role != 'volunteer') {
         return false;
       }
 
@@ -170,6 +188,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
 
           final users = (snapshot.data?.docs ?? const [])
               .map((doc) => {'id': doc.id, ...doc.data()})
+              .where(_isActiveUser)
               .toList();
           final contributors = _filteredUsers(users);
 
@@ -318,44 +337,6 @@ class _CommunityScreenState extends State<CommunityScreen> {
                                     child: ListView(
                                       shrinkWrap: true,
                                       children: [
-                                        Padding(
-                                          padding: const EdgeInsets.fromLTRB(
-                                            16,
-                                            8,
-                                            16,
-                                            12,
-                                          ),
-                                          child: Text(
-                                            'Role',
-                                            style: TextStyle(
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.w800,
-                                              color: isDark
-                                                  ? Colors.grey.shade300
-                                                  : Colors.grey.shade600,
-                                            ),
-                                          ),
-                                        ),
-                                        for (final option in [
-                                          'All',
-                                          'Volunteer',
-                                        ])
-                                          ListTile(
-                                            title: Text(option),
-                                            trailing: _roleFilter == option
-                                                ? const Icon(
-                                                    Icons.check,
-                                                    color: _kPrimaryColor,
-                                                  )
-                                                : null,
-                                            onTap: () {
-                                              setState(
-                                                () => _roleFilter = option,
-                                              );
-                                              Navigator.of(sheetContext).pop();
-                                            },
-                                          ),
-                                        const Divider(),
                                         Padding(
                                           padding: const EdgeInsets.fromLTRB(
                                             16,
