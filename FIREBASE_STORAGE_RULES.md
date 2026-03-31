@@ -1,10 +1,26 @@
+
 # Firebase Security Rules (Storage + Firestore)
 
-Use both rules below. Storage rules alone are not enough for role-based login.
+> **ℹ️ Both Storage and Firestore rules are required for secure, role-based access in GoodDeeds App.**
+
+---
+
+## 🔒 Quick Permissions Reference
+
+| Collection/Path         | Read                | Create              | Update              | Delete              |
+|------------------------|---------------------|---------------------|---------------------|---------------------|
+| `/users/{userId}`      | Owner only          | Owner only          | Owner only          | ❌                  |
+| `/user_profiles/{uid}` | Owner only          | Owner only          | Owner only          | ❌                  |
+| `/events/{eventId}`    | Any signed-in user  | Any signed-in user  | Creator only        | Creator only        |
+| `/storage/events/{uid}`| Public              | Owner only          | Owner only          | Owner only          |
+
+---
+
 
 ## 1) Firebase Storage Rules
 
 Go to [Firebase Console](https://console.firebase.google.com/) -> your project -> **Storage** -> **Rules**, then paste:
+
 
 ```rules
 rules_version = '2';
@@ -19,9 +35,11 @@ service firebase.storage {
 }
 ```
 
+
 ## 2) Firestore Rules
 
 Go to your project -> **Firestore Database** -> **Rules**, then paste:
+
 
 ```rules
 rules_version = '2';
@@ -62,6 +80,18 @@ service cloud.firestore {
 }
 ```
 
+---
+
+## 🗂️ Main Data Collections
+
+- **users**: Auth user info, roles, impact points
+- **user_profiles**: Editable profile fields (name, phone, photo, bio)
+- **events**: Event details, participants, organizer info
+- **storage/events**: Uploaded event images
+
+---
+
+
 ## 3) After Publishing Rules
 
 1. Click **Publish** for Storage rules.
@@ -70,11 +100,16 @@ service cloud.firestore {
 4. Sign out and sign in again.
 5. Test organizer login, event image upload, and user profile save.
 
-## Quick Troubleshooting
 
-- `cloud_firestore/permission-denied` after login:
-  Firestore `users/{uid}` read is blocked.
-- Upload spinner never ends:
-  Storage write permissions or network issue.
-- `User not authenticated`:
-  Session expired; sign in again.
+## 🚑 Quick Troubleshooting
+
+> **cloud_firestore/permission-denied** after login:  
+> Firestore `users/{uid}` read is blocked. Check user rules.
+
+> **Upload spinner never ends:**  
+> Storage write permissions or network issue.
+
+> **User not authenticated:**  
+> Session expired; sign in again.
+
+---

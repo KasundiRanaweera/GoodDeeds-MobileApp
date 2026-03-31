@@ -25,15 +25,20 @@
 
 ---
 
-## 🗂️ Main Screens
 
-- **Welcome Screen**: Entry point, login/register
-- **Home Screen**: Main navigation for users
-- **Discover Events**: Browse and filter events
-- **Event Details**: Info, join/check-in, see participants
-- **Create Event**: (Organizer) Add new events with images
-- **User Profile**: View and edit profile, sign out
-- **Organizer Dashboard**: Manage events, view analytics
+## 🗂️ Main Screens & UI Widgets
+
+| Screen Name              | Widget/Class                | File Location                                               |
+|-------------------------|-----------------------------|-------------------------------------------------------------|
+| Welcome Screen           | `WelcomeScreen`             | `lib/screens/welcome_screen.dart`                           |
+| Home Screen              | `HomeScreen`                | `lib/screens/home_screen.dart`                              |
+| Discover Events          | `DiscoverEventsScreen`      | `lib/screens/user/discover_events_screen.dart`              |
+| Event Details            | `EventDetailsScreen`        | `lib/screens/user/event_details_screen.dart`                |
+| Create Event             | `CreateEventScreen`         | `lib/screens/organizer/create_event_screen.dart`            |
+| User Profile             | `UserProfileScreen`         | `lib/screens/user/user_profile_screen.dart`                 |
+| Organizer Dashboard      | `OrganizerDashboardScreen`  | `lib/screens/organizer/organizer_dashboard_screen.dart`     |
+
+Each screen is implemented as a modern Flutter widget, using Material 3 design and responsive layouts. See the file locations above for the full UI code and customization options.
 
 ---
 
