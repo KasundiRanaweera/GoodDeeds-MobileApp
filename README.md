@@ -90,6 +90,3 @@
 - [Material Design](https://m3.material.io/)
 
 ---
-
-## 📝 License
-MIT License. See [LICENSE](LICENSE) for details.
