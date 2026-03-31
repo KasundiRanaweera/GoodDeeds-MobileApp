@@ -1,0 +1,107 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function currentUserPath() {
+      return /databases/$(database)/documents/users/$(request.auth.uid);
+    }
+
+    function isOrganizer() {
+      return isSignedIn() &&
+        exists(currentUserPath()) &&
+        get(currentUserPath()).data.role == 'Organizer';
+    }
+
+    function pointsFieldChanged() {
+      return request.resource.data.impactPoints != resource.data.impactPoints ||
+        request.resource.data.totalPoints != resource.data.totalPoints ||
+        request.resource.data.rewardPoints != resource.data.rewardPoints ||
+        request.resource.data.points != resource.data.points;
+    }
+
+    function oldPoints() {
+      return (resource.data.impactPoints is int)
+        ? resource.data.impactPoints
+        : ((resource.data.totalPoints is int)
+          ? resource.data.totalPoints
+          : ((resource.data.rewardPoints is int)
+            ? resource.data.rewardPoints
+            : ((resource.data.points is int)
+              ? resource.data.points
+              : 0)));
+    }
+
+    function newPoints() {
+      return (request.resource.data.impactPoints is int)
+        ? request.resource.data.impactPoints
+        : ((request.resource.data.totalPoints is int)
+          ? request.resource.data.totalPoints
+          : ((request.resource.data.rewardPoints is int)
+            ? request.resource.data.rewardPoints
+            : ((request.resource.data.points is int)
+              ? request.resource.data.points
+              : 0)));
+    }
+
+    function arePointFieldsAligned() {
+      return request.resource.data.impactPoints == request.resource.data.totalPoints &&
+        request.resource.data.totalPoints == request.resource.data.rewardPoints &&
+        request.resource.data.rewardPoints == request.resource.data.points;
+    }
+
+    function pointDeltaWithinEventRange() {
+      return (newPoints() - oldPoints()) <= 200 &&
+        (newPoints() - oldPoints()) >= -200 &&
+        newPoints() >= 0;
+    }
+
+    // Allows organizer to update only reward/attendance fields on user docs.
+    function isOrganizerAttendanceRewardUpdate() {
+      return isOrganizer() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'impactPoints',
+          'totalPoints',
+          'rewardPoints',
+          'points',
+          'participationStatusByEvent',
+          'attendanceVerifiedAtByEvent',
+          'updatedAt'
+        ]) &&
+        arePointFieldsAligned() &&
+        (!pointsFieldChanged() || pointDeltaWithinEventRange());
+    }
+
+    match /users/{userId} {
+      // Needed by community listing and profile rendering.
+      allow read: if isSignedIn();
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId) || isOrganizerAttendanceRewardUpdate();
+      allow delete: if false;
+    }
+
+    match /user_profiles/{userId} {
+      // User profiles are shown publicly in community/public profile screens.
+      allow read: if isSignedIn();
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId);
+      allow delete: if false;
+    }
+
+    match /events/{eventId} {
+      allow read: if isSignedIn();
+
+      // Event creation is organizer-only.
+      allow create: if isOrganizer();
+
+      // Event owner can update/delete their own events.
+      allow update, delete: if isSignedIn() && resource.data.createdByUid == request.auth.uid;
+    }
+  }
+}

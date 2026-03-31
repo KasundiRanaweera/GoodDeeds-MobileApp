@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import '../../../utils/type_converters.dart';
 import 'organizer_dashboard_screen.dart';
 
 const _kPrimaryColor = Color(0xFF0DF233);
@@ -34,35 +35,12 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
   String _eventTitleFromData(Map<String, dynamic> eventData) {
     final value =
         eventData['title'] ?? eventData['eventName'] ?? eventData['name'];
-    final text = value?.toString().trim() ?? '';
+    final text = TypeConverters.asString(value);
     return text.isEmpty ? 'Selected Event' : text;
   }
 
-  List<String> _asStringList(dynamic value) {
-    if (value is List) {
-      return value
-          .map((item) => item.toString())
-          .where((x) => x.isNotEmpty)
-          .toList();
-    }
-    return const [];
-  }
-
-  int _asInt(dynamic value, {int fallback = 0}) {
-    if (value is int) return value;
-    if (value is num) return value.toInt();
-    return int.tryParse(value?.toString() ?? '') ?? fallback;
-  }
-
-  DateTime? _asDate(dynamic value) {
-    if (value is Timestamp) return value.toDate();
-    if (value is DateTime) return value;
-    if (value is String) return DateTime.tryParse(value);
-    return null;
-  }
-
   bool _isAttendanceOpen(Map<String, dynamic> eventData) {
-    final eventDateTime = _asDate(
+    final eventDateTime = TypeConverters.asDate(
       eventData['eventDate'] ?? eventData['date'] ?? eventData['startDate'],
     );
     if (eventDateTime == null) return false;
@@ -127,12 +105,14 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
       final snap = await tx.get(eventRef);
       if (!snap.exists) return;
       final data = snap.data() ?? <String, dynamic>{};
-      final checkedInIds = _asStringList(data['checkedInIds']).toSet();
-      final awardedParticipantIds = _asStringList(
+      final checkedInIds = TypeConverters.asStringList(
+        data['checkedInIds'],
+      ).toSet();
+      final awardedParticipantIds = TypeConverters.asStringList(
         data['awardedParticipantIds'],
       ).toSet();
       final attendanceOpen = _isAttendanceOpen(data);
-      final impactPoints = _asInt(
+      final impactPoints = TypeConverters.asInt(
         data['impactPoints'] ?? data['points'] ?? data['rewardPoints'],
       );
 
@@ -141,7 +121,7 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
           .doc(participantUid);
       final userSnap = await tx.get(userRef);
       final userData = userSnap.data() ?? <String, dynamic>{};
-      final currentPoints = _asInt(
+      final currentPoints = TypeConverters.asInt(
         userData['impactPoints'] ??
             userData['totalPoints'] ??
             userData['rewardPoints'] ??
@@ -304,8 +284,12 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
           final eventData = eventSnapshot.data!.data() ?? <String, dynamic>{};
           final liveEventTitle = _eventTitleFromData(eventData);
           final attendanceOpen = _isAttendanceOpen(eventData);
-          final participantIds = _asStringList(eventData['participantIds']);
-          final checkedInIds = _asStringList(eventData['checkedInIds']).toSet();
+          final participantIds = TypeConverters.asStringList(
+            eventData['participantIds'],
+          );
+          final checkedInIds = TypeConverters.asStringList(
+            eventData['checkedInIds'],
+          ).toSet();
 
           return FutureBuilder<List<_ParticipantVm>>(
             future: _loadParticipants(participantIds),

@@ -258,14 +258,82 @@ class FirebaseService {
           (e) => e.toString(),
         ),
       );
+      final checkedInIds = List<String>.from(
+        (data['checkedInIds'] as List<dynamic>? ?? const []).map(
+          (e) => e.toString(),
+        ),
+      );
+      final awardedParticipantIds = List<String>.from(
+        (data['awardedParticipantIds'] as List<dynamic>? ?? const []).map(
+          (e) => e.toString(),
+        ),
+      );
+      final impactPointsRaw =
+          data['impactPoints'] ?? data['points'] ?? data['rewardPoints'];
+      final impactPoints = impactPointsRaw is num
+          ? impactPointsRaw.toInt()
+          : int.tryParse(impactPointsRaw?.toString() ?? '') ?? 0;
+
+      final wasAwarded = awardedParticipantIds.contains(user.uid);
+      final shouldReversePoints = wasAwarded && impactPoints > 0;
 
       participantIds.removeWhere((id) => id == user.uid);
+      checkedInIds.removeWhere((id) => id == user.uid);
+      awardedParticipantIds.removeWhere((id) => id == user.uid);
+
+      final userRef = _firestore.collection('users').doc(user.uid);
+      final userSnap = await transaction.get(userRef);
+      final userData = userSnap.data() ?? <String, dynamic>{};
+      final currentPointsRaw =
+          userData['impactPoints'] ??
+          userData['totalPoints'] ??
+          userData['rewardPoints'] ??
+          userData['points'];
+      final currentPoints = currentPointsRaw is num
+          ? currentPointsRaw.toInt()
+          : int.tryParse(currentPointsRaw?.toString() ?? '') ?? 0;
+
+      final userUpdates = <String, dynamic>{
+        'participationStatusByEvent.$eventId': FieldValue.delete(),
+        'attendanceVerifiedAtByEvent.$eventId': FieldValue.delete(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+
+      if (shouldReversePoints) {
+        final updatedPoints = (currentPoints - impactPoints).clamp(
+          0,
+          1000000000,
+        );
+        userUpdates['impactPoints'] = updatedPoints;
+        userUpdates['totalPoints'] = updatedPoints;
+        userUpdates['rewardPoints'] = updatedPoints;
+        userUpdates['points'] = updatedPoints;
+      }
+
+      transaction.set(userRef, userUpdates, SetOptions(merge: true));
 
       transaction.update(eventRef, {
         'participantIds': participantIds,
+        'checkedInIds': checkedInIds,
+        'awardedParticipantIds': awardedParticipantIds,
         'participantsCount': participantIds.length,
         'updatedAt': FieldValue.serverTimestamp(),
       });
     });
+  }
+
+  Future<void> resetUserStats(String userId) async {
+    try {
+      await _firestore.collection('users').doc(userId).update({
+        'impactPoints': FieldValue.delete(),
+        'totalPoints': FieldValue.delete(),
+        'rewardPoints': FieldValue.delete(),
+        'points': FieldValue.delete(),
+        'attendanceVerifiedAtByEvent': FieldValue.delete(),
+        'participationStatusByEvent': FieldValue.delete(),
+      });
+    } catch (e) {
+      throw Exception('Failed to reset user stats: $e');
+    }
   }
 }
