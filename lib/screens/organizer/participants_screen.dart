@@ -8,9 +8,9 @@ const _kPrimaryColor = Color(0xFF0DF233);
 const _kBackgroundLight = Color(0xFFF8F6F6);
 const _kBackgroundDark = Color(0xFF221610);
 const _kAttendanceWindowError =
-    'Attendance can only be marked from event start time up to 48 hours after.';
+    'Attendance can be marked from the event start up to 48 hours after .';
 const _kAttendanceWindowReminder =
-    'Please mark attendance within 48 hours after the event start time. After this window, unmarked participants will appear as Missed and receive no points.';
+    'After 48 hours, unmarked participants will be marked as Missed and receive no points.';
 
 class ParticipantsScreen extends StatefulWidget {
   const ParticipantsScreen({super.key, this.eventData});

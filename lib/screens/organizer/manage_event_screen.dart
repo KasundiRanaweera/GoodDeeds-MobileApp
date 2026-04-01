@@ -53,6 +53,7 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
   late String _currentImageUrl;
   String _selectedImageExtension = 'jpg';
   String _selectedImageContentType = 'image/jpeg';
+  DateTime? _originalEventDate;
 
   bool get _canUseCamera =>
       defaultTargetPlatform == TargetPlatform.android ||
@@ -131,6 +132,7 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
           widget.eventData['startDate'],
     );
     if (parsedDate != null) {
+      _originalEventDate = parsedDate;
       _selectedDate = DateTime(
         parsedDate.year,
         parsedDate.month,
@@ -524,6 +526,15 @@ class _ManageEventScreenState extends State<ManageEventScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Event ID is missing. Cannot update event.'),
+        ),
+      );
+      return;
+    }
+    if (_originalEventDate != null &&
+        DateTime.now().isAfter(_originalEventDate!)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This event is completed and can’t be edited.'),
         ),
       );
       return;

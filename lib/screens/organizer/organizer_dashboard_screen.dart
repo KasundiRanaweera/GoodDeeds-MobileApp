@@ -72,6 +72,11 @@ class _OrganizerDashboardScreenState extends State<OrganizerDashboardScreen> {
     return DateTime.now().isBefore(deleteCutoff);
   }
 
+  bool _canEditEvent(DateTime? eventDate) {
+    if (eventDate == null) return true;
+    return DateTime.now().isBefore(eventDate);
+  }
+
   bool _isOwnedByCurrentUser(Map<String, dynamic> event, String currentUid) {
     if (currentUid.isEmpty) return true;
     final ownerCandidates = [
@@ -409,6 +414,7 @@ class _OrganizerDashboardScreenState extends State<OrganizerDashboardScreen> {
                         final status = _statusForEvent(event);
                         final canDelete =
                             status == 'active' && _canDeleteEvent(date);
+                        final canEdit = _canEditEvent(date);
 
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 16),
@@ -705,6 +711,19 @@ class _OrganizerDashboardScreenState extends State<OrganizerDashboardScreen> {
                                           const SizedBox(width: 10),
                                           ElevatedButton(
                                             onPressed: () {
+                                              if (!canEdit) {
+                                                ScaffoldMessenger.of(
+                                                  context,
+                                                ).showSnackBar(
+                                                  const SnackBar(
+                                                    content: Text(
+                                                      'Events cannot be edited after the event date.',
+                                                    ),
+                                                  ),
+                                                );
+                                                return;
+                                              }
+
                                               Navigator.of(context).push(
                                                 MaterialPageRoute(
                                                   builder: (_) =>
@@ -715,8 +734,12 @@ class _OrganizerDashboardScreenState extends State<OrganizerDashboardScreen> {
                                               );
                                             },
                                             style: ElevatedButton.styleFrom(
-                                              backgroundColor: _kPrimaryColor,
-                                              foregroundColor: Colors.black,
+                                              backgroundColor: canEdit
+                                                  ? _kPrimaryColor
+                                                  : Colors.grey,
+                                              foregroundColor: canEdit
+                                                  ? Colors.black
+                                                  : Colors.white,
                                               padding:
                                                   const EdgeInsets.symmetric(
                                                     horizontal: 16,
@@ -724,19 +747,25 @@ class _OrganizerDashboardScreenState extends State<OrganizerDashboardScreen> {
                                                   ),
                                               elevation: 2,
                                             ),
-                                            child: const Row(
+                                            child: Row(
                                               mainAxisSize: MainAxisSize.min,
                                               children: [
                                                 Text(
                                                   'Manage Event',
                                                   style: TextStyle(
                                                     fontWeight: FontWeight.w700,
+                                                    color: canEdit
+                                                        ? Colors.black
+                                                        : Colors.white,
                                                   ),
                                                 ),
                                                 SizedBox(width: 8),
                                                 Icon(
                                                   Icons.arrow_forward,
                                                   size: 18,
+                                                  color: canEdit
+                                                      ? Colors.black
+                                                      : Colors.white,
                                                 ),
                                               ],
                                             ),
