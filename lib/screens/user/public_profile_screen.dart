@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'discover_events_screen.dart';
 import 'my_events_screen.dart';
+import 'myfriends_screen.dart';
 import 'user_profile_screen.dart';
 
 const _kPrimaryColor = Color(0xFF0DF233);
@@ -566,6 +567,13 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
 
           if (index == 3) {
             Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (_) => const MyFriendsScreen()),
+            );
+            return;
+          }
+
+          if (index == 4) {
+            Navigator.of(context).pushReplacement(
               MaterialPageRoute(builder: (_) => const UserProfileScreen()),
             );
           }
@@ -581,6 +589,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
             label: 'My Events',
           ),
           BottomNavigationBarItem(icon: Icon(Icons.groups), label: 'Community'),
+          BottomNavigationBarItem(icon: Icon(Icons.group), label: 'My Friends'),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
         ],
       ),
@@ -1138,6 +1147,14 @@ class _PublicUserDetailScreenState extends State<PublicUserDetailScreen> {
 
           if (index == 3) {
             Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (_) => const MyFriendsScreen()),
+              (route) => false,
+            );
+            return;
+          }
+
+          if (index == 4) {
+            Navigator.of(context).pushAndRemoveUntil(
               MaterialPageRoute(builder: (_) => const UserProfileScreen()),
               (route) => false,
             );
@@ -1154,6 +1171,7 @@ class _PublicUserDetailScreenState extends State<PublicUserDetailScreen> {
             label: 'My Events',
           ),
           BottomNavigationBarItem(icon: Icon(Icons.groups), label: 'Community'),
+          BottomNavigationBarItem(icon: Icon(Icons.group), label: 'My Friends'),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
         ],
       ),

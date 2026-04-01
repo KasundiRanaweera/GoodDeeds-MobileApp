@@ -5,6 +5,7 @@ import '../../services/firebase_service.dart';
 import '../../widgets/safe_avatar.dart';
 import 'community_screen.dart';
 import 'event_details_screen.dart';
+import 'myfriends_screen.dart';
 import 'my_events_screen.dart';
 import 'user_profile_screen.dart';
 
@@ -796,6 +797,12 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
                 }
                 if (index == 3) {
                   Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(builder: (_) => const MyFriendsScreen()),
+                  );
+                  return;
+                }
+                if (index == 4) {
+                  Navigator.of(context).pushReplacement(
                     MaterialPageRoute(
                       builder: (_) => const UserProfileScreen(),
                     ),
@@ -818,6 +825,10 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
                 BottomNavigationBarItem(
                   icon: Icon(Icons.groups),
                   label: 'Community',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.group),
+                  label: 'My Friends',
                 ),
                 BottomNavigationBarItem(
                   icon: Icon(Icons.person),

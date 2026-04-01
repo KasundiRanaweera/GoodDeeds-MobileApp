@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'model_parsers.dart';
+import 'post_model.dart';
+import 'user_model.dart';
 
 class EventModel {
   const EventModel({
@@ -180,5 +182,47 @@ class EventModel {
   factory EventModel.fromDocument(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? <String, dynamic>{};
     return EventModel.fromMap(data, id: doc.id);
+  }
+}
+
+class EventEngagementModel {
+  const EventEngagementModel({required this.event, this.likes = const []});
+
+  final EventModel event;
+  final List<LikeModel> likes;
+
+  int get likeCount => likes.length;
+
+  EventEngagementModel copyWith({EventModel? event, List<LikeModel>? likes}) {
+    return EventEngagementModel(
+      event: event ?? this.event,
+      likes: likes ?? this.likes,
+    );
+  }
+}
+
+class EventRosterModel {
+  const EventRosterModel({
+    required this.event,
+    this.organizer,
+    this.participants = const [],
+  });
+
+  final EventModel event;
+  final UserAggregateModel? organizer;
+  final List<UserAggregateModel> participants;
+
+  int get participantCount => participants.length;
+
+  EventRosterModel copyWith({
+    EventModel? event,
+    UserAggregateModel? organizer,
+    List<UserAggregateModel>? participants,
+  }) {
+    return EventRosterModel(
+      event: event ?? this.event,
+      organizer: organizer ?? this.organizer,
+      participants: participants ?? this.participants,
+    );
   }
 }

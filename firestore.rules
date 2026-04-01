@@ -166,6 +166,64 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /posts/{postId} {
+      // Anyone can read public posts.
+      allow read: if true;
+
+      // Users can create posts for themselves only.
+      allow create: if isSignedIn() &&
+        request.resource.data.keys().hasOnly([
+          'postId',
+          'authorUid',
+          'authorName',
+          'authorBio',
+          'authorPhotoUrl',
+          'description',
+          'imageUrl',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        request.resource.data.authorUid == request.auth.uid &&
+        request.resource.data.postId == postId;
+
+      // Users can update/delete only their own posts.
+      allow update, delete: if isSignedIn() && resource.data.authorUid == request.auth.uid;
+
+      match /likes/{userId} {
+        // Anyone can read likes.
+        allow read: if true;
+
+        // Users can like/unlike only as themselves.
+        allow create: if isOwner(userId) &&
+          request.resource.data.keys().hasOnly(['uid', 'createdAt']) &&
+          request.resource.data.uid == userId;
+        allow update: if false;
+        allow delete: if isOwner(userId);
+      }
+
+      match /comments/{commentId} {
+        // Anyone can read comments.
+        allow read: if true;
+
+        // Users can create comments only as themselves.
+        allow create: if isSignedIn() &&
+          request.resource.data.keys().hasOnly([
+            'commentId',
+            'uid',
+            'authorName',
+            'authorPhotoUrl',
+            'text',
+            'createdAt',
+            'updatedAt'
+          ]) &&
+          request.resource.data.uid == request.auth.uid &&
+          request.resource.data.commentId == commentId;
+
+        // Users can update/delete their own comments only.
+        allow update, delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+      }
+    }
+
     match /events/{eventId} {
       // Anyone can read event docs.
       allow read: if true;

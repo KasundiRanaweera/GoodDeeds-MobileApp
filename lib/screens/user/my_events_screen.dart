@@ -3,6 +3,7 @@ import '../../services/firebase_service.dart';
 import 'discover_events_screen.dart';
 import 'community_screen.dart';
 import 'event_details_screen.dart';
+import 'myfriends_screen.dart';
 import 'user_profile_screen.dart';
 
 const _kPrimaryColor = Color(0xFF0DF233);
@@ -659,6 +660,10 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
             );
           } else if (index == 3) {
             Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (_) => const MyFriendsScreen()),
+            );
+          } else if (index == 4) {
+            Navigator.of(context).pushReplacement(
               MaterialPageRoute(builder: (_) => const UserProfileScreen()),
             );
           }
@@ -674,6 +679,7 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
             label: 'My Events',
           ),
           BottomNavigationBarItem(icon: Icon(Icons.groups), label: 'Community'),
+          BottomNavigationBarItem(icon: Icon(Icons.group), label: 'My Friends'),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
         ],
       ),
