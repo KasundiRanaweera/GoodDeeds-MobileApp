@@ -617,10 +617,50 @@ class _FallbackAvatar extends StatelessWidget {
   }
 }
 
-class PublicUserDetailScreen extends StatelessWidget {
+class PublicUserDetailScreen extends StatefulWidget {
   const PublicUserDetailScreen({super.key, required this.userData});
 
   final Map<String, dynamic> userData;
+
+  @override
+  State<PublicUserDetailScreen> createState() => _PublicUserDetailScreenState();
+}
+
+class _PublicUserDetailScreenState extends State<PublicUserDetailScreen> {
+  List<String> _asStringList(dynamic value) {
+    if (value is! List) return const [];
+    return value.map((entry) => entry.toString()).toList();
+  }
+
+  Future<void> _toggleFollow(String targetUserId, bool isFollowing) async {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please sign in to follow users.')),
+      );
+      return;
+    }
+
+    if (targetUserId.isEmpty || targetUserId == currentUser.uid) return;
+
+    final userRef = FirebaseFirestore.instance
+        .collection('users')
+        .doc(currentUser.uid);
+
+    try {
+      await userRef.set({
+        'followingUserIds': isFollowing
+            ? FieldValue.arrayRemove([targetUserId])
+            : FieldValue.arrayUnion([targetUserId]),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to update follow status.')),
+      );
+    }
+  }
 
   String _asString(dynamic value, {String fallback = ''}) {
     if (value == null) return fallback;
@@ -700,23 +740,29 @@ class PublicUserDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final String uid = _asString(userData['id'] ?? userData['uid']);
+    final String uid = _asString(
+      widget.userData['id'] ?? widget.userData['uid'],
+    );
     final String name = _asString(
-      userData['name'] ?? userData['displayName'] ?? userData['fullName'],
+      widget.userData['name'] ??
+          widget.userData['displayName'] ??
+          widget.userData['fullName'],
       fallback: 'Community Member',
     );
     final String photoUrl = _asString(
-      userData['photoUrl'] ?? userData['avatarUrl'],
+      widget.userData['photoUrl'] ?? widget.userData['avatarUrl'],
     );
     final String bio = _asString(
-      userData['bio'] ?? userData['about'] ?? userData['description'],
+      widget.userData['bio'] ??
+          widget.userData['about'] ??
+          widget.userData['description'],
       fallback:
           'Passionate about environmental conservation and community building.',
     );
     final int baseImpactPoints = _asInt(
-      userData['impactPoints'] ??
-          userData['points'] ??
-          userData['rewardPoints'],
+      widget.userData['impactPoints'] ??
+          widget.userData['points'] ??
+          widget.userData['rewardPoints'],
       fallback: 0,
     );
 
@@ -872,6 +918,67 @@ class PublicUserDetailScreen extends StatelessWidget {
                                   height: 1.4,
                                 ),
                               ),
+                              const SizedBox(height: 14),
+                              if (uid.isNotEmpty &&
+                                  uid != FirebaseAuth.instance.currentUser?.uid)
+                                StreamBuilder<
+                                  DocumentSnapshot<Map<String, dynamic>>
+                                >(
+                                  stream:
+                                      FirebaseAuth.instance.currentUser == null
+                                      ? const Stream.empty()
+                                      : FirebaseFirestore.instance
+                                            .collection('users')
+                                            .doc(
+                                              FirebaseAuth
+                                                  .instance
+                                                  .currentUser!
+                                                  .uid,
+                                            )
+                                            .snapshots(),
+                                  builder: (context, followSnapshot) {
+                                    final followingIds = _asStringList(
+                                      followSnapshot.data
+                                          ?.data()?['followingUserIds'],
+                                    );
+                                    final isFollowing = followingIds.contains(
+                                      uid,
+                                    );
+
+                                    return Center(
+                                      child: SizedBox(
+                                        width: 160,
+                                        child: ElevatedButton(
+                                          onPressed: () =>
+                                              _toggleFollow(uid, isFollowing),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: isFollowing
+                                                ? const Color(0xFF1E7E34)
+                                                : _kPrimaryColor,
+                                            foregroundColor: Colors.white,
+                                            elevation: 0,
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 14,
+                                            ),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(14),
+                                            ),
+                                          ),
+                                          child: Text(
+                                            isFollowing
+                                                ? 'Following'
+                                                : 'Follow',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w800,
+                                              fontSize: 14,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
                             ],
                           ),
                         ),
