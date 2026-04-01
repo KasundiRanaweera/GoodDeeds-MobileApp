@@ -190,6 +190,18 @@ service cloud.firestore {
       allow delete: if isSignedIn() &&
         (resource.data.createdByUid == request.auth.uid || isOrganizer()) &&
         eventDeleteOpen(resource.data);
+
+      match /likes/{userId} {
+        // Anyone can read likes.
+        allow read: if true;
+
+        // Users can create/delete only their own like doc with constrained fields.
+        allow create: if isOwner(userId) &&
+          request.resource.data.keys().hasOnly(['uid', 'createdAt']) &&
+          request.resource.data.uid == userId;
+        allow update: if false;
+        allow delete: if isOwner(userId);
+      }
     }
   }
 }

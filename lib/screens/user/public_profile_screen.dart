@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'discover_events_screen.dart';
@@ -974,6 +975,7 @@ class PublicUserDetailScreen extends StatelessWidget {
                                 Padding(
                                   padding: const EdgeInsets.only(bottom: 10),
                                   child: _ActivityCard(
+                                    eventId: _asString(event['id']),
                                     title: _asString(
                                       event['title'] ??
                                           event['eventName'] ??
@@ -1125,6 +1127,7 @@ class _ImpactCard extends StatelessWidget {
 
 class _ActivityCard extends StatelessWidget {
   const _ActivityCard({
+    required this.eventId,
     required this.title,
     required this.dateLabel,
     required this.icon,
@@ -1132,14 +1135,223 @@ class _ActivityCard extends StatelessWidget {
     required this.isDark,
   });
 
+  final String eventId;
   final String title;
   final String dateLabel;
   final IconData icon;
   final int points;
   final bool isDark;
 
+  String _initials(String name) {
+    final parts = name.trim().split(RegExp(r'\s+'));
+    if (parts.isEmpty || parts.first.isEmpty) return 'U';
+    if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
+    return '${parts.first.substring(0, 1)}${parts.last.substring(0, 1)}'
+        .toUpperCase();
+  }
+
+  Future<void> _toggleLike(
+    BuildContext context,
+    String currentUid,
+    bool hasLiked,
+  ) async {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please sign in to like activities.')),
+      );
+      return;
+    }
+    if (eventId.isEmpty) return;
+
+    final likeDocRef = FirebaseFirestore.instance
+        .collection('events')
+        .doc(eventId)
+        .collection('likes')
+        .doc(currentUid);
+
+    try {
+      if (hasLiked) {
+        await likeDocRef.delete();
+      } else {
+        await likeDocRef.set({
+          'uid': currentUid,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to update like right now.')),
+      );
+    }
+  }
+
+  Future<List<Map<String, String>>> _loadLikedByUsers(
+    List<String> likedByUids,
+  ) async {
+    if (likedByUids.isEmpty) return const [];
+
+    final users = <Map<String, String>>[];
+    for (var i = 0; i < likedByUids.length; i += 10) {
+      final end = (i + 10 < likedByUids.length) ? i + 10 : likedByUids.length;
+      final batchIds = likedByUids.sublist(i, end);
+
+      final batchSnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .where(FieldPath.documentId, whereIn: batchIds)
+          .get();
+
+      for (final doc in batchSnapshot.docs) {
+        final data = doc.data();
+        final name = (data['name'] ?? data['displayName'] ?? data['fullName'])
+            ?.toString()
+            .trim();
+        final photoUrl = (data['photoUrl'] ?? data['avatarUrl'])
+            ?.toString()
+            .trim();
+        users.add({
+          'uid': doc.id,
+          'name': (name == null || name.isEmpty) ? 'Community Member' : name,
+          'photoUrl': photoUrl ?? '',
+        });
+      }
+    }
+
+    final byUid = {for (final user in users) user['uid']!: user};
+    final ordered = <Map<String, String>>[];
+    for (final uid in likedByUids) {
+      ordered.add(
+        byUid[uid] ?? {'uid': uid, 'name': 'Community Member', 'photoUrl': ''},
+      );
+    }
+
+    return ordered;
+  }
+
+  void _showLikedBySheet(BuildContext context, List<String> likedByUids) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Liked by',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    color: isDark ? Colors.white : Colors.black,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                if (likedByUids.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(
+                      'No likes yet for this activity.',
+                      style: TextStyle(
+                        color: isDark
+                            ? Colors.grey.shade300
+                            : Colors.grey.shade700,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  )
+                else
+                  FutureBuilder<List<Map<String, String>>>(
+                    future: _loadLikedByUsers(likedByUids),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 12),
+                          child: Center(child: CircularProgressIndicator()),
+                        );
+                      }
+
+                      final users = snapshot.data ?? const [];
+                      if (users.isEmpty) {
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Text(
+                            'No likes yet for this activity.',
+                            style: TextStyle(
+                              color: isDark
+                                  ? Colors.grey.shade300
+                                  : Colors.grey.shade700,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        );
+                      }
+
+                      return Flexible(
+                        child: ListView.separated(
+                          shrinkWrap: true,
+                          itemCount: users.length,
+                          separatorBuilder: (context, index) =>
+                              const Divider(height: 1),
+                          itemBuilder: (context, index) {
+                            final user = users[index];
+                            final name = user['name'] ?? 'Community Member';
+                            final photoUrl = user['photoUrl'] ?? '';
+
+                            return ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              leading: CircleAvatar(
+                                backgroundColor: _kPrimaryColor.withValues(
+                                  alpha: 0.2,
+                                ),
+                                backgroundImage: photoUrl.isNotEmpty
+                                    ? NetworkImage(photoUrl)
+                                    : null,
+                                child: photoUrl.isEmpty
+                                    ? Text(
+                                        _initials(name),
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w800,
+                                          color: Colors.black,
+                                        ),
+                                      )
+                                    : null,
+                              ),
+                              title: Text(
+                                name,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  color: isDark ? Colors.white : Colors.black,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      );
+                    },
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final currentUid = FirebaseAuth.instance.currentUser?.uid;
+    final likesStream = eventId.isEmpty
+        ? const Stream<QuerySnapshot<Map<String, dynamic>>>.empty()
+        : FirebaseFirestore.instance
+              .collection('events')
+              .doc(eventId)
+              .collection('likes')
+              .snapshots();
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -1164,35 +1376,104 @@ class _ActivityCard extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
-                    color: isDark ? Colors.white : Colors.black,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  dateLabel,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            '+$points Points',
-            style: const TextStyle(
-              color: _kPrimaryColor,
-              fontWeight: FontWeight.w800,
-              fontSize: 13,
+            child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: likesStream,
+              builder: (context, likesSnapshot) {
+                final likedByUids = (likesSnapshot.data?.docs ?? const [])
+                    .map((doc) => doc.id)
+                    .toList();
+                final likesCount = likedByUids.length;
+                final hasLiked =
+                    currentUid != null && likedByUids.contains(currentUid);
+
+                return Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              color: isDark ? Colors.white : Colors.black,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            dateLabel,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isDark
+                                  ? Colors.grey.shade400
+                                  : Colors.grey.shade600,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          InkWell(
+                            onTap: () =>
+                                _showLikedBySheet(context, likedByUids),
+                            borderRadius: BorderRadius.circular(8),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                                vertical: 2,
+                              ),
+                              child: Text(
+                                likesCount == 0
+                                    ? 'Be the first to like'
+                                    : '$likesCount ${likesCount == 1 ? 'Like' : 'Likes'}',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: isDark
+                                      ? Colors.grey.shade300
+                                      : Colors.grey.shade700,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                            minWidth: 30,
+                            minHeight: 30,
+                          ),
+                          onPressed: currentUid == null
+                              ? () => _toggleLike(context, '', false)
+                              : () =>
+                                    _toggleLike(context, currentUid, hasLiked),
+                          icon: Icon(
+                            hasLiked ? Icons.favorite : Icons.favorite_border,
+                            color: hasLiked
+                                ? const Color(0xFFFF3B5C)
+                                : (isDark
+                                      ? Colors.grey.shade300
+                                      : Colors.grey.shade700),
+                          ),
+                        ),
+                        Text(
+                          '+$points Points',
+                          style: const TextStyle(
+                            color: _kPrimaryColor,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                );
+              },
             ),
           ),
         ],
