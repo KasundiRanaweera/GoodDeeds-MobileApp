@@ -19,6 +19,9 @@
 - Event creation, discovery, and participation
 - User profiles with editable info
 - Impact points and rewards system
+- Organizer attendance marking with strict 48-hour window from event start
+- Volunteer event status flow: Joined -> Pending -> Completed/Missed
+- Profile activity history updates after points are awarded
 - Organizer dashboard & event analytics
 - Community and profile screens
 - Firebase Firestore & Storage integration
@@ -34,7 +37,10 @@
 | Home Screen              | `HomeScreen`                | `lib/screens/home_screen.dart`                              |
 | Discover Events          | `DiscoverEventsScreen`      | `lib/screens/user/discover_events_screen.dart`              |
 | Event Details            | `EventDetailsScreen`        | `lib/screens/user/event_details_screen.dart`                |
+| My Events                | `MyEventsScreen`            | `lib/screens/user/my_events_screen.dart`                    |
 | Create Event             | `CreateEventScreen`         | `lib/screens/organizer/create_event_screen.dart`            |
+| Manage Event             | `ManageEventScreen`         | `lib/screens/organizer/manage_event_screen.dart`            |
+| Participants             | `ParticipantsScreen`        | `lib/screens/organizer/participants_screen.dart`            |
 | User Profile             | `UserProfileScreen`         | `lib/screens/user/user_profile_screen.dart`                 |
 | Organizer Dashboard      | `OrganizerDashboardScreen`  | `lib/screens/organizer/organizer_dashboard_screen.dart`     |
 
@@ -76,6 +82,30 @@ Each screen is implemented as a modern Flutter widget, using Material 3 design a
 	```sh
 	flutter run
 	```
+
+5. **Deploy Firestore rules (required for attendance permissions):**
+	```sh
+	firebase deploy --only firestore:rules
+	```
+
+---
+
+## Attendance & Permission Rules (Latest)
+
+- Attendance marking window: from event start time up to exactly 48 hours after.
+- Organizer role is accepted from these user fields:
+	- `role: "Organizer"`
+	- `roles` list containing `Organizer`
+	- `isOrganizer: true`
+- Organizer accounts have full Firestore access in app collections (`users`, `user_profiles`, `events`).
+- Volunteer card status in My Events:
+	- `Joined` before event date
+	- `Pending` within the 48-hour attendance window if unmarked
+	- `Completed` when organizer marks attendance
+	- `Missed` after 48 hours if still unmarked
+- User profile activity history and events-attended count increase only after points are awarded (`awardedParticipantIds`).
+
+For full copy-paste security rule docs, see `FIREBASE_STORAGE_RULES.md`.
 
 ---
 

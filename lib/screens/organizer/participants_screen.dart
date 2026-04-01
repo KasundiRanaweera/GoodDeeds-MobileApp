@@ -7,6 +7,10 @@ import 'organizer_dashboard_screen.dart';
 const _kPrimaryColor = Color(0xFF0DF233);
 const _kBackgroundLight = Color(0xFFF8F6F6);
 const _kBackgroundDark = Color(0xFF221610);
+const _kAttendanceWindowError =
+    'Attendance can only be marked from event start time up to 48 hours after.';
+const _kAttendanceWindowReminder =
+    'Please mark attendance within 48 hours after the event start time. After this window, unmarked participants will appear as Missed and receive no points.';
 
 class ParticipantsScreen extends StatefulWidget {
   const ParticipantsScreen({super.key, this.eventData});
@@ -32,22 +36,22 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
     return widget.eventData?['id']?.toString() ?? '';
   }
 
+  DateTime? _asDate(dynamic value) {
+    return TypeConverters.asDate(value);
+  }
+
+  bool _canMarkAttendance(DateTime? eventDate) {
+    if (eventDate == null) return false;
+    final now = DateTime.now();
+    final deadline = eventDate.add(const Duration(days: 2));
+    return !now.isBefore(eventDate) && !now.isAfter(deadline);
+  }
+
   String _eventTitleFromData(Map<String, dynamic> eventData) {
     final value =
         eventData['title'] ?? eventData['eventName'] ?? eventData['name'];
     final text = TypeConverters.asString(value);
     return text.isEmpty ? 'Selected Event' : text;
-  }
-
-  bool _isAttendanceOpen(Map<String, dynamic> eventData) {
-    final eventDateTime = TypeConverters.asDate(
-      eventData['eventDate'] ?? eventData['date'] ?? eventData['startDate'],
-    );
-    if (eventDateTime == null) return false;
-
-    // Attendance is allowed starting from the event time onwards.
-    final now = DateTime.now();
-    return !now.isBefore(eventDateTime);
   }
 
   Future<List<_ParticipantVm>> _loadParticipants(
@@ -79,6 +83,12 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
           userData['email']?.toString().trim() ??
           profileData['email']?.toString().trim() ??
           '';
+      final contactNumber =
+          profileData['contactNumber']?.toString().trim() ??
+          profileData['phone']?.toString().trim() ??
+          userData['contactNumber']?.toString().trim() ??
+          userData['phone']?.toString().trim() ??
+          '';
       final photoUrl =
           profileData['photoUrl']?.toString().trim() ??
           profileData['avatarUrl']?.toString().trim() ??
@@ -87,7 +97,13 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
           '';
 
       result.add(
-        _ParticipantVm(uid: uid, name: name, email: email, photoUrl: photoUrl),
+        _ParticipantVm(
+          uid: uid,
+          name: name,
+          email: email,
+          contactNumber: contactNumber,
+          photoUrl: photoUrl,
+        ),
       );
     }
     return result;
@@ -105,13 +121,18 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
       final snap = await tx.get(eventRef);
       if (!snap.exists) return;
       final data = snap.data() ?? <String, dynamic>{};
+      final eventDate = _asDate(
+        data['eventDate'] ?? data['date'] ?? data['startDate'],
+      );
+      if (!_canMarkAttendance(eventDate)) {
+        throw StateError(_kAttendanceWindowError);
+      }
       final checkedInIds = TypeConverters.asStringList(
         data['checkedInIds'],
       ).toSet();
       final awardedParticipantIds = TypeConverters.asStringList(
         data['awardedParticipantIds'],
       ).toSet();
-      final attendanceOpen = _isAttendanceOpen(data);
       final impactPoints = TypeConverters.asInt(
         data['impactPoints'] ?? data['points'] ?? data['rewardPoints'],
       );
@@ -132,9 +153,6 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
       final userUpdates = <String, dynamic>{};
 
       if (checkedIn) {
-        if (!attendanceOpen) {
-          return;
-        }
         checkedInIds.add(participantUid);
         if (!awardedParticipantIds.contains(participantUid) &&
             impactPoints > 0) {
@@ -283,7 +301,12 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
 
           final eventData = eventSnapshot.data!.data() ?? <String, dynamic>{};
           final liveEventTitle = _eventTitleFromData(eventData);
-          final attendanceOpen = _isAttendanceOpen(eventData);
+          final eventDate = _asDate(
+            eventData['eventDate'] ??
+                eventData['date'] ??
+                eventData['startDate'],
+          );
+          final canMarkAttendance = _canMarkAttendance(eventDate);
           final participantIds = TypeConverters.asStringList(
             eventData['participantIds'],
           );
@@ -327,26 +350,6 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  if (!attendanceOpen)
-                    Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: isDark
-                            ? Colors.orange.withValues(alpha: 0.18)
-                            : Colors.orange.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        'Attendance can be marked on the event date or after.',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: isDark
-                              ? Colors.orange.shade200
-                              : Colors.orange.shade800,
-                        ),
-                      ),
-                    ),
                   Container(
                     height: 48,
                     decoration: BoxDecoration(
@@ -441,20 +444,64 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  if (!attendanceOpen)
+                  if (!canMarkAttendance)
                     Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: Text(
-                        'You can mark attendance after the event starts.',
-                        style: TextStyle(
-                          fontSize: 13,
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
                           color: isDark
-                              ? Colors.grey.shade400
-                              : Colors.grey.shade600,
-                          fontStyle: FontStyle.italic,
+                              ? Colors.amber.withValues(alpha: 0.18)
+                              : Colors.amber.withValues(alpha: 0.14),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          _kAttendanceWindowError,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: isDark
+                                ? Colors.amber.shade100
+                                : Colors.brown.shade800,
+                          ),
                         ),
                       ),
                     ),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? Colors.blueGrey.withValues(alpha: 0.22)
+                            : Colors.blueGrey.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.schedule,
+                            size: 18,
+                            color: isDark
+                                ? Colors.blueGrey.shade100
+                                : Colors.blueGrey.shade800,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _kAttendanceWindowReminder,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: isDark
+                                    ? Colors.blueGrey.shade100
+                                    : Colors.blueGrey.shade800,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                   ...filteredParticipants.asMap().entries.map((entry) {
                     final participant = entry.value;
                     final isCheckedIn = checkedInIds.contains(participant.uid);
@@ -480,6 +527,7 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                           ),
                         ),
                         child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
                             Container(
                               width: 48,
@@ -543,33 +591,67 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                             ),
                             const SizedBox(width: 10),
                             Expanded(
-                              child: Text(
-                                participant.name,
-                                style: TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w700,
-                                  color: isDark ? Colors.white : Colors.black,
-                                ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    participant.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700,
+                                      color: isDark
+                                          ? Colors.white
+                                          : Colors.black,
+                                    ),
+                                  ),
+                                  if (participant.contactNumber.isNotEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 3),
+                                      child: Text(
+                                        participant.contactNumber,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w500,
+                                          color: isDark
+                                              ? Colors.grey.shade300
+                                              : Colors.grey.shade700,
+                                        ),
+                                      ),
+                                    ),
+                                ],
                               ),
                             ),
-                            const SizedBox(width: 8),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Checkbox(
-                                  value: isCheckedIn,
-                                  activeColor: _kPrimaryColor,
-                                  onChanged: attendanceOpen
-                                      ? (value) async {
-                                          await _setCheckedIn(
-                                            eventId: eventId,
-                                            participantUid: participant.uid,
-                                            checkedIn: value ?? false,
+                            const SizedBox(width: 4),
+                            Checkbox(
+                              value: isCheckedIn,
+                              activeColor: _kPrimaryColor,
+                              onChanged: canMarkAttendance
+                                  ? (value) async {
+                                      try {
+                                        await _setCheckedIn(
+                                          eventId: eventId,
+                                          participantUid: participant.uid,
+                                          checkedIn: value ?? false,
+                                        );
+                                      } catch (e) {
+                                        if (!context.mounted) return;
+                                        ScaffoldMessenger.of(context)
+                                          ..hideCurrentSnackBar()
+                                          ..showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                'Failed to update attendance: $e',
+                                              ),
+                                            ),
                                           );
-                                        }
-                                      : null,
-                                ),
-                              ],
+                                      }
+                                    }
+                                  : null,
                             ),
                           ],
                         ),
@@ -591,11 +673,13 @@ class _ParticipantVm {
     required this.uid,
     required this.name,
     required this.email,
+    required this.contactNumber,
     required this.photoUrl,
   });
 
   final String uid;
   final String name;
   final String email;
+  final String contactNumber;
   final String photoUrl;
 }

@@ -16,7 +16,51 @@ service cloud.firestore {
     function isOrganizer() {
       return isSignedIn() &&
         exists(currentUserPath()) &&
-        get(currentUserPath()).data.role == 'Organizer';
+        (
+          get(currentUserPath()).data.role == 'Organizer' ||
+          get(currentUserPath()).data.isOrganizer == true ||
+          (
+            get(currentUserPath()).data.roles is list &&
+            get(currentUserPath()).data.roles.hasAny(['Organizer'])
+          )
+        );
+    }
+
+    function eventAttendanceOpen(eventData) {
+      return (
+        eventData.eventDate is timestamp &&
+        request.time >= eventData.eventDate &&
+        request.time <= eventData.eventDate + duration.value(2, 'd')
+      ) || (
+        eventData.date is timestamp &&
+        request.time >= eventData.date &&
+        request.time <= eventData.date + duration.value(2, 'd')
+      ) || (
+        eventData.startDate is timestamp &&
+        request.time >= eventData.startDate &&
+        request.time <= eventData.startDate + duration.value(2, 'd')
+      ) || (
+        !(eventData.eventDate is timestamp) &&
+        !(eventData.date is timestamp) &&
+        !(eventData.startDate is timestamp)
+      );
+    }
+
+    function eventDeleteOpen(eventData) {
+      return (
+        eventData.eventDate is timestamp &&
+        request.time < eventData.eventDate - duration.value(12, 'h')
+      ) || (
+        eventData.date is timestamp &&
+        request.time < eventData.date - duration.value(12, 'h')
+      ) || (
+        eventData.startDate is timestamp &&
+        request.time < eventData.startDate - duration.value(12, 'h')
+      ) || (
+        !(eventData.eventDate is timestamp) &&
+        !(eventData.date is timestamp) &&
+        !(eventData.startDate is timestamp)
+      );
     }
 
     function pointsFieldChanged() {
@@ -62,9 +106,9 @@ service cloud.firestore {
         newPoints() >= 0;
     }
 
-    // Allows organizer to update only reward/attendance fields on user docs.
-    function isOrganizerAttendanceRewardUpdate() {
-      return isOrganizer() &&
+    // Allows any signed-in user to update only reward/attendance fields on user docs.
+    function isAttendanceRewardUpdateBySignedInUser() {
+      return isSignedIn() &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'impactPoints',
           'totalPoints',
@@ -74,21 +118,49 @@ service cloud.firestore {
           'attendanceVerifiedAtByEvent',
           'updatedAt'
         ]) &&
-        arePointFieldsAligned() &&
-        (!pointsFieldChanged() || pointDeltaWithinEventRange());
+        (
+          !pointsFieldChanged() ||
+          (arePointFieldsAligned() && pointDeltaWithinEventRange())
+        );
+    }
+
+    // Allows any signed-in user to create a missing user doc only with attendance/reward fields.
+    function isAttendanceRewardCreateBySignedInUser() {
+      return isSignedIn() &&
+        request.resource.data.keys().hasOnly([
+          'impactPoints',
+          'totalPoints',
+          'rewardPoints',
+          'points',
+          'participationStatusByEvent',
+          'attendanceVerifiedAtByEvent',
+          'updatedAt'
+        ]) &&
+        (
+          !(request.resource.data.impactPoints is int) ||
+          (
+            request.resource.data.totalPoints is int &&
+            request.resource.data.rewardPoints is int &&
+            request.resource.data.points is int &&
+            arePointFieldsAligned() &&
+            request.resource.data.impactPoints >= 0
+          )
+        );
     }
 
     match /users/{userId} {
       // Anyone can read user docs.
       allow read: if true;
-      allow create: if isOwner(userId);
-      allow update: if isOwner(userId) || isOrganizerAttendanceRewardUpdate();
+      allow create, update, delete: if isOrganizer();
+      allow create: if isOwner(userId) || isAttendanceRewardCreateBySignedInUser();
+      allow update: if isOwner(userId) || isAttendanceRewardUpdateBySignedInUser();
       allow delete: if false;
     }
 
     match /user_profiles/{userId} {
       // Anyone can read user_profile docs.
       allow read: if true;
+      allow create, update, delete: if isOrganizer();
       allow create: if isOwner(userId);
       allow update: if isOwner(userId);
       allow delete: if false;
@@ -101,17 +173,23 @@ service cloud.firestore {
       // Event creation is organizer-only.
       allow create: if isOrganizer();
 
+      // Organizers have full access to event documents.
+      allow update, delete: if isOrganizer();
+
       // Volunteers can join/leave events (update only participantIds, participantsCount, updatedAt).
       allow update: if isSignedIn() && 
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['participantIds', 'participantsCount', 'updatedAt']);
 
-      // Organizers can mark attendance (update checkedInIds, awardedParticipantIds, updatedAt).
-      allow update: if isOrganizer() && 
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['checkedInIds', 'awardedParticipantIds', 'updatedAt']);
+      // Any signed-in user can mark attendance from event date through 2 days after.
+      allow update: if isSignedIn() && 
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['checkedInIds', 'awardedParticipantIds', 'updatedAt']) &&
+        eventAttendanceOpen(resource.data);
 
       // Event owner can fully update/delete their own events.
       allow update: if isSignedIn() && resource.data.createdByUid == request.auth.uid;
-      allow delete: if isSignedIn() && (resource.data.createdByUid == request.auth.uid || isOrganizer());
+      allow delete: if isSignedIn() &&
+        (resource.data.createdByUid == request.auth.uid || isOrganizer()) &&
+        eventDeleteOpen(resource.data);
     }
   }
 }

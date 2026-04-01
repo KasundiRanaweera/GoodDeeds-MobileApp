@@ -8,6 +8,13 @@ import 'user_profile_screen.dart';
 const _kPrimaryColor = Color(0xFF0DF233);
 const _kBackgroundLight = Color(0xFFF8F6F6);
 const _kBackgroundDark = Color(0xFF221610);
+const _kStatusJoined = 'Joined';
+const _kStatusPending = 'Pending';
+const _kStatusCompleted = 'Completed';
+const _kStatusMissed = 'Missed';
+const _kPendingInfoText =
+    'Attendance pending - awaiting organizer confirmation.';
+const _kMissedInfoText = 'Not attended. No points awarded.';
 
 class MyEventsScreen extends StatefulWidget {
   const MyEventsScreen({super.key});
@@ -86,6 +93,17 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
     return null;
   }
 
+  DateTime? _eventDate(Map<String, dynamic> event) {
+    return _asDate(event['eventDate'] ?? event['date'] ?? event['startDate']);
+  }
+
+  Set<String> _asStringSet(dynamic value) {
+    if (value is Iterable) {
+      return value.map((e) => e.toString()).toSet();
+    }
+    return <String>{};
+  }
+
   String _formatDateTime(DateTime? date) {
     if (date == null) return 'Date to be announced';
 
@@ -124,9 +142,7 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
       final isUpcomingTab = _selectedTab == 1;
 
       filtered = events.where((event) {
-        final date = _asDate(
-          event['eventDate'] ?? event['date'] ?? event['startDate'],
-        );
+        final date = _eventDate(event);
         if (date == null) return isUpcomingTab;
         final isPast = date.isBefore(now);
         return isUpcomingTab ? !isPast : isPast;
@@ -150,37 +166,37 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
   }
 
   String _statusForEvent(Map<String, dynamic> event, String uid) {
-    final date = _asDate(
-      event['eventDate'] ?? event['date'] ?? event['startDate'],
-    );
-    if (date == null || date.isAfter(DateTime.now())) return 'Joined';
+    final date = _eventDate(event);
+    if (date == null) return _kStatusJoined;
 
-    final checkedInIds = (event['checkedInIds'] as List<dynamic>? ?? const [])
-        .map((e) => e.toString())
-        .toSet();
-    final awardedIds =
-        (event['awardedParticipantIds'] as List<dynamic>? ?? const [])
-            .map((e) => e.toString())
-            .toSet();
+    final now = DateTime.now();
+    if (date.isAfter(now)) return _kStatusJoined;
 
-    if (awardedIds.contains(uid)) {
-      return 'Points Earned';
+    final checkedInIds = _asStringSet(event['checkedInIds']);
+    final awardedIds = _asStringSet(event['awardedParticipantIds']);
+
+    if (awardedIds.contains(uid) || checkedInIds.contains(uid)) {
+      return _kStatusCompleted;
     }
-    if (checkedInIds.contains(uid)) {
-      return 'Attended';
+
+    final pendingUntil = date.add(const Duration(days: 2));
+    if (!now.isAfter(pendingUntil)) {
+      return _kStatusPending;
     }
-    return 'Missed';
+
+    return _kStatusMissed;
   }
 
   Color _statusBackground(String status, bool isDark) {
     switch (status) {
-      case 'Joined':
+      case _kStatusJoined:
         return _kPrimaryColor.withValues(alpha: 0.15);
-      case 'Points Earned':
-        return _kPrimaryColor.withValues(alpha: isDark ? 0.2 : 0.28);
-      case 'Attended':
+      case _kStatusPending:
+        return (isDark ? Colors.amber.shade700 : Colors.amber.shade100)
+            .withValues(alpha: isDark ? 0.35 : 1);
+      case _kStatusCompleted:
         return _kPrimaryColor.withValues(alpha: isDark ? 0.12 : 0.2);
-      case 'Missed':
+      case _kStatusMissed:
         return (isDark ? Colors.orange.shade700 : Colors.orange.shade100)
             .withValues(alpha: isDark ? 0.4 : 1);
       default:
@@ -190,13 +206,13 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
 
   Color _statusTextColor(String status, bool isDark) {
     switch (status) {
-      case 'Joined':
+      case _kStatusJoined:
         return _kPrimaryColor;
-      case 'Points Earned':
-        return isDark ? Colors.lightGreenAccent : Colors.green.shade900;
-      case 'Attended':
+      case _kStatusPending:
+        return isDark ? Colors.amber.shade100 : Colors.amber.shade900;
+      case _kStatusCompleted:
         return isDark ? _kPrimaryColor : Colors.black87;
-      case 'Missed':
+      case _kStatusMissed:
         return isDark ? Colors.orange.shade200 : Colors.orange.shade900;
       default:
         return isDark ? Colors.grey.shade400 : Colors.grey.shade600;
@@ -335,9 +351,7 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
                       event['title'] ?? event['eventName'] ?? event['name'],
                       fallback: 'Untitled Event',
                     );
-                    final date = _asDate(
-                      event['eventDate'] ?? event['date'] ?? event['startDate'],
-                    );
+                    final date = _eventDate(event);
                     final location = _asString(
                       event['location'] ?? event['venue'] ?? event['address'],
                       fallback: 'Location to be announced',
@@ -499,49 +513,36 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
                                         ),
                                       ],
                                     ),
-                                    if (status == 'Points Earned') ...[
+                                    if (status == _kStatusPending) ...[
                                       const SizedBox(height: 6),
                                       Row(
                                         children: [
-                                          const Icon(
-                                            Icons.stars,
+                                          Icon(
+                                            Icons.hourglass_top,
                                             size: 14,
-                                            color: _kPrimaryColor,
+                                            color: isDark
+                                                ? Colors.amber.shade100
+                                                : Colors.amber.shade900,
                                           ),
                                           const SizedBox(width: 4),
-                                          Text(
-                                            'Attendance verified. Points credited.',
-                                            style: const TextStyle(
-                                              color: _kPrimaryColor,
-                                              fontWeight: FontWeight.w700,
-                                              fontSize: 12,
+                                          Expanded(
+                                            child: Text(
+                                              _kPendingInfoText,
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                color: isDark
+                                                    ? Colors.amber.shade100
+                                                    : Colors.amber.shade900,
+                                                fontWeight: FontWeight.w700,
+                                                fontSize: 12,
+                                              ),
                                             ),
                                           ),
                                         ],
                                       ),
                                     ],
-                                    if (status == 'Attended') ...[
-                                      const SizedBox(height: 6),
-                                      Row(
-                                        children: [
-                                          const Icon(
-                                            Icons.verified,
-                                            size: 14,
-                                            color: _kPrimaryColor,
-                                          ),
-                                          const SizedBox(width: 4),
-                                          Text(
-                                            'Attendance marked. Waiting for points.',
-                                            style: const TextStyle(
-                                              color: _kPrimaryColor,
-                                              fontWeight: FontWeight.w700,
-                                              fontSize: 12,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                    if (status == 'Missed') ...[
+                                    if (status == _kStatusMissed) ...[
                                       const SizedBox(height: 6),
                                       Row(
                                         children: [
@@ -553,20 +554,24 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
                                                 : Colors.orange.shade800,
                                           ),
                                           const SizedBox(width: 4),
-                                          Text(
-                                            'Not attended. No points awarded.',
-                                            style: TextStyle(
-                                              color: isDark
-                                                  ? Colors.orange.shade200
-                                                  : Colors.orange.shade800,
-                                              fontWeight: FontWeight.w700,
-                                              fontSize: 12,
+                                          Expanded(
+                                            child: Text(
+                                              _kMissedInfoText,
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                color: isDark
+                                                    ? Colors.orange.shade200
+                                                    : Colors.orange.shade800,
+                                                fontWeight: FontWeight.w700,
+                                                fontSize: 12,
+                                              ),
                                             ),
                                           ),
                                         ],
                                       ),
                                     ],
-                                    if (status == 'Joined') ...[
+                                    if (status == _kStatusJoined) ...[
                                       const SizedBox(height: 8),
                                       Align(
                                         alignment: Alignment.centerLeft,

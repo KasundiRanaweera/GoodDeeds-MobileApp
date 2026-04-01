@@ -231,40 +231,19 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               );
 
               return StreamBuilder<List<Map<String, dynamic>>>(
-                stream: _firebaseService.streamMyJoinedEvents(),
+                stream: _firebaseService.streamOrganizerEvents(),
                 builder: (context, eventsSnapshot) {
                   final events =
                       eventsSnapshot.data ?? const <Map<String, dynamic>>[];
 
-                  final attendanceByEventRaw =
-                      liveUserData['attendanceVerifiedAtByEvent'];
-                  final attendanceByEvent = attendanceByEventRaw is Map
-                      ? attendanceByEventRaw.map(
-                          (key, value) => MapEntry(key.toString(), value),
-                        )
-                      : const <String, dynamic>{};
-
-                  final statusByEventRaw =
-                      liveUserData['participationStatusByEvent'];
-                  final statusByEvent = statusByEventRaw is Map
-                      ? statusByEventRaw.map(
-                          (key, value) => MapEntry(key.toString(), value),
-                        )
-                      : const <String, dynamic>{};
-
                   final attendedEvents = events.where((event) {
-                    final eventId = _asString(event['id'] ?? event['eventId']);
-                    if (eventId.isEmpty) return false;
-
-                    final hasVerifiedAttendance =
-                        attendanceByEvent.containsKey(eventId) &&
-                        attendanceByEvent[eventId] != null;
-                    final status = _asString(
-                      statusByEvent[eventId],
-                    ).toLowerCase();
-                    final markedAttended = status == 'attended';
-
-                    return hasVerifiedAttendance || markedAttended;
+                    final awardedIds =
+                        (event['awardedParticipantIds'] as List<dynamic>? ??
+                                const [])
+                            .map((e) => e.toString())
+                            .toSet();
+                    final uid = currentUser?.uid ?? '';
+                    return uid.isNotEmpty && awardedIds.contains(uid);
                   }).toList();
 
                   final sortedEvents = [...attendedEvents]
@@ -282,7 +261,21 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                     });
 
                   final eventsAttended = attendedEvents.length;
-                  final impactPoints = basePoints;
+                  final earnedFromEvents = attendedEvents.fold<int>(0, (
+                    runningTotal,
+                    event,
+                  ) {
+                    return runningTotal +
+                        _asInt(
+                          event['impactPoints'] ??
+                              event['points'] ??
+                              event['rewardPoints'],
+                          fallback: 0,
+                        );
+                  });
+                  final impactPoints = basePoints > 0
+                      ? basePoints
+                      : earnedFromEvents;
 
                   return SafeArea(
                     child: Align(

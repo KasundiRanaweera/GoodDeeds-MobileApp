@@ -66,6 +66,12 @@ class _OrganizerDashboardScreenState extends State<OrganizerDashboardScreen> {
     return '${months[date.month - 1]} ${date.day}, ${date.year}';
   }
 
+  bool _canDeleteEvent(DateTime? eventDate) {
+    if (eventDate == null) return true;
+    final deleteCutoff = eventDate.subtract(const Duration(hours: 12));
+    return DateTime.now().isBefore(deleteCutoff);
+  }
+
   bool _isOwnedByCurrentUser(Map<String, dynamic> event, String currentUid) {
     if (currentUid.isEmpty) return true;
     final ownerCandidates = [
@@ -140,10 +146,23 @@ class _OrganizerDashboardScreenState extends State<OrganizerDashboardScreen> {
 
   Future<void> _confirmAndDeleteEvent(Map<String, dynamic> event) async {
     final eventId = _asString(event['id']);
+    final eventDate = _asDate(
+      event['eventDate'] ?? event['date'] ?? event['startDate'],
+    );
     if (eventId.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Unable to delete: missing event id.')),
+      );
+      return;
+    }
+
+    if (!_canDeleteEvent(eventDate)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Events cannot be deleted within 12 hours of start.'),
+        ),
       );
       return;
     }
@@ -388,7 +407,8 @@ class _OrganizerDashboardScreenState extends State<OrganizerDashboardScreen> {
                               event['startDate'],
                         );
                         final status = _statusForEvent(event);
-                        final canDelete = status == 'active';
+                        final canDelete =
+                            status == 'active' && _canDeleteEvent(date);
 
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 16),
@@ -522,12 +542,16 @@ class _OrganizerDashboardScreenState extends State<OrganizerDashboardScreen> {
                                           InkWell(
                                             onTap: () {
                                               if (!canDelete) {
+                                                final deleteMessage =
+                                                    status != 'active'
+                                                    ? 'Only active events can be deleted.'
+                                                    : 'Events cannot be deleted within 12 hours of start.';
                                                 ScaffoldMessenger.of(
                                                   context,
                                                 ).showSnackBar(
-                                                  const SnackBar(
+                                                  SnackBar(
                                                     content: Text(
-                                                      'Only active events can be deleted.',
+                                                      deleteMessage,
                                                     ),
                                                   ),
                                                 );
