@@ -11,8 +11,7 @@ GoodDeeds is a Flutter + Firebase app for organizing and joining community servi
 ## Core Features
 
 - Firebase authentication (email/password)
-- Password reset flow using email recovery
-- Multi-role accounts (Volunteer, Organizer, or both)
+- Single-role accounts per email (Volunteer or Organizer)
 - Event creation, discovery, and participation
 - Discover Events shows an `Expired` status badge for past events
 - Attendance check-in with a strict 48-hour window
@@ -23,24 +22,19 @@ GoodDeeds is a Flutter + Firebase app for organizing and joining community servi
 
 ## Role and Authentication Architecture
 
-### Multiple Roles System
+### Single Role Per Email
 
-Users can hold both Volunteer and Organizer roles at the same time.
+Each account is restricted to one primary role.
 
-- Roles are stored as `List<String>` in Firestore user documents.
+- Role data is stored in `role` and mirrored in `roles` (single-item list) for compatibility.
 - User model helper methods: `isVolunteer`, `isOrganizer`, and `hasRole()`.
-- Navigation is determined by assigned roles:
-  - Both roles: Home screen role selector
-  - Organizer only: Organizer dashboard
-  - Volunteer only: Discover events
+- Navigation is determined by assigned role:
+  - Organizer: Organizer dashboard
+  - Volunteer: Discover events
+- To use both roles, users must register separate accounts with different email addresses.
 
 ### Firestore Organizer Validation
 
-Organizer checks support backward-compatible role formats:
-
-- `role: "Organizer"`
-- `roles: ["Organizer", ...]`
-- `isOrganizer: true`
 
 ### Registration Data Writes
 
@@ -103,6 +97,10 @@ Volunteer status progression in My Events:
 - Comments open in a dedicated full-screen comments page
 - Comment list and counts update in real time
 - Success feedback is shown after add/delete actions
+
+### Profile Posts
+.
+- Post creation is available via the add-post icon in profile.
 
 ### My Friends and Following
 

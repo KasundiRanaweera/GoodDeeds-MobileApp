@@ -143,6 +143,16 @@ class FirebaseService {
       }, SetOptions(merge: true));
 
       return userCredential;
+    } on FirebaseAuthException catch (e, st) {
+      debugPrint(
+        'FirebaseService.signUp auth error: ${e.code} ${e.message}\n$st',
+      );
+      if (e.code == 'email-already-in-use') {
+        throw Exception(
+          'This email is already registered. One email can only have one role. Use a different email for a different role account.',
+        );
+      }
+      rethrow;
     } catch (e, st) {
       // Log the full error to console for debugging.
       // The UI will show the user-friendly message.

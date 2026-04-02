@@ -12,7 +12,6 @@ import 'discover_events_screen.dart';
 import 'edit_profile_screen.dart';
 import 'myfriends_screen.dart';
 import 'my_events_screen.dart';
-import '../../widgets/social_post_card.dart' as social_post_card;
 
 const _kPrimaryColor = Color(0xFF0DF233);
 const _kBackgroundLight = Color(0xFFF8F6F6);
@@ -643,80 +642,30 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                                     16,
                                     8,
                                   ),
-                                  child:
-                                      StreamBuilder<
-                                        QuerySnapshot<Map<String, dynamic>>
-                                      >(
-                                        stream: FirebaseFirestore.instance
-                                            .collection('posts')
-                                            .where(
-                                              'authorUid',
-                                              isEqualTo: currentUser.uid,
-                                            )
-                                            .orderBy(
-                                              'createdAt',
-                                              descending: true,
-                                            )
-                                            .snapshots(),
-                                        builder: (context, postsSnapshot) {
-                                          if (postsSnapshot.connectionState ==
-                                              ConnectionState.waiting) {
-                                            return const Center(
-                                              child:
-                                                  CircularProgressIndicator(),
-                                            );
-                                          }
-
-                                          final posts =
-                                              postsSnapshot.data?.docs ??
-                                              const [];
-                                          if (posts.isEmpty) {
-                                            return Container(
-                                              width: double.infinity,
-                                              padding: const EdgeInsets.all(13),
-                                              decoration: BoxDecoration(
-                                                color: isDark
-                                                    ? Colors.grey.shade900
-                                                    : Colors.white,
-                                                borderRadius:
-                                                    BorderRadius.circular(14),
-                                                border: Border.all(
-                                                  color: isDark
-                                                      ? Colors.grey.shade800
-                                                      : Colors.grey.shade200,
-                                                ),
-                                              ),
-                                              child: Text(
-                                                'Create your first photo post by tapping the icon.',
-                                                style: TextStyle(
-                                                  color: isDark
-                                                      ? Colors.grey.shade300
-                                                      : Colors.grey.shade700,
-                                                  fontWeight: FontWeight.w600,
-                                                ),
-                                              ),
-                                            );
-                                          }
-
-                                          return Column(
-                                            children: [
-                                              for (final post in posts.take(5))
-                                                Padding(
-                                                  padding:
-                                                      const EdgeInsets.only(
-                                                        bottom: 12,
-                                                      ),
-                                                  child:
-                                                      social_post_card.SocialPostCard(
-                                                        postId: post.id,
-                                                        postData: post.data(),
-                                                        isDark: isDark,
-                                                      ),
-                                                ),
-                                            ],
-                                          );
-                                        },
+                                  child: Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(13),
+                                    decoration: BoxDecoration(
+                                      color: isDark
+                                          ? Colors.grey.shade900
+                                          : Colors.white,
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(
+                                        color: isDark
+                                            ? Colors.grey.shade800
+                                            : Colors.grey.shade200,
                                       ),
+                                    ),
+                                    child: Text(
+                                      'Use the add-post icon to create a post.',
+                                      style: TextStyle(
+                                        color: isDark
+                                            ? Colors.grey.shade300
+                                            : Colors.grey.shade700,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
                                 ),
                               Padding(
                                 padding: const EdgeInsets.fromLTRB(

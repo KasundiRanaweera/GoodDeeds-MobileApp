@@ -24,6 +24,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   final List<String> _roles = ['Volunteer', 'Organizer'];
 
+  String _userFriendlyRegistrationError(Object error) {
+    final text = error.toString().replaceFirst('Exception: ', '').trim();
+    if (text.isEmpty) {
+      return 'Registration failed. Please try again.';
+    }
+    return text;
+  }
+
   @override
   void dispose() {
     _nameController.dispose();
@@ -385,7 +393,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                         messenger.showSnackBar(
                                           SnackBar(
                                             content: Text(
-                                              'Registration failed: ${e.toString()}',
+                                              _userFriendlyRegistrationError(e),
                                             ),
                                           ),
                                         );
