@@ -21,7 +21,7 @@ class MyFriendsScreen extends StatefulWidget {
 }
 
 class _MyFriendsScreenState extends State<MyFriendsScreen> {
-  bool _showMyPosts = true;
+  bool _showFriendsPosts = true;
 
   Future<void> _unfollowUser(String targetUserId) async {
     final currentUser = FirebaseAuth.instance.currentUser;
@@ -263,8 +263,8 @@ class _MyFriendsScreenState extends State<MyFriendsScreen> {
                                   const SizedBox(height: 10),
                                   Text(
                                     friends.isEmpty
-                                        ? 'Open Following to see the list of people you follow.'
-                                        : 'Open Following to manage and view the people you follow.',
+                                        ? 'You are not following anyone yet.'
+                                        : 'View your following list.',
                                     style: TextStyle(
                                       color: isDark
                                           ? Colors.grey.shade300
@@ -283,16 +283,16 @@ class _MyFriendsScreenState extends State<MyFriendsScreen> {
                                   child: ElevatedButton(
                                     onPressed: () {
                                       setState(() {
-                                        _showMyPosts = false;
+                                        _showFriendsPosts = true;
                                       });
                                     },
                                     style: ElevatedButton.styleFrom(
-                                      backgroundColor: !_showMyPosts
+                                      backgroundColor: _showFriendsPosts
                                           ? _kPrimaryColor
                                           : (isDark
                                                 ? Colors.grey.shade800
                                                 : Colors.white),
-                                      foregroundColor: !_showMyPosts
+                                      foregroundColor: _showFriendsPosts
                                           ? Colors.black
                                           : (isDark
                                                 ? Colors.white
@@ -300,10 +300,10 @@ class _MyFriendsScreenState extends State<MyFriendsScreen> {
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(12),
                                       ),
-                                      elevation: !_showMyPosts ? 0 : 1,
+                                      elevation: _showFriendsPosts ? 0 : 1,
                                       side: BorderSide(
                                         color: _kPrimaryColor.withValues(
-                                          alpha: !_showMyPosts ? 0 : 0.22,
+                                          alpha: _showFriendsPosts ? 0 : 0.22,
                                         ),
                                       ),
                                       padding: const EdgeInsets.symmetric(
@@ -311,7 +311,7 @@ class _MyFriendsScreenState extends State<MyFriendsScreen> {
                                       ),
                                     ),
                                     child: const Text(
-                                      'My Friends',
+                                      'Friends Posts',
                                       style: TextStyle(
                                         fontWeight: FontWeight.w700,
                                       ),
@@ -323,16 +323,16 @@ class _MyFriendsScreenState extends State<MyFriendsScreen> {
                                   child: ElevatedButton(
                                     onPressed: () {
                                       setState(() {
-                                        _showMyPosts = true;
+                                        _showFriendsPosts = false;
                                       });
                                     },
                                     style: ElevatedButton.styleFrom(
-                                      backgroundColor: _showMyPosts
+                                      backgroundColor: !_showFriendsPosts
                                           ? _kPrimaryColor
                                           : (isDark
                                                 ? Colors.grey.shade800
                                                 : Colors.white),
-                                      foregroundColor: _showMyPosts
+                                      foregroundColor: !_showFriendsPosts
                                           ? Colors.black
                                           : (isDark
                                                 ? Colors.white
@@ -340,10 +340,10 @@ class _MyFriendsScreenState extends State<MyFriendsScreen> {
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(12),
                                       ),
-                                      elevation: _showMyPosts ? 0 : 1,
+                                      elevation: !_showFriendsPosts ? 0 : 1,
                                       side: BorderSide(
                                         color: _kPrimaryColor.withValues(
-                                          alpha: _showMyPosts ? 0 : 0.22,
+                                          alpha: !_showFriendsPosts ? 0 : 0.22,
                                         ),
                                       ),
                                       padding: const EdgeInsets.symmetric(
@@ -384,7 +384,7 @@ class _MyFriendsScreenState extends State<MyFriendsScreen> {
                                           final authorUid = _asString(
                                             doc.data()['authorUid'],
                                           );
-                                          if (_showMyPosts) {
+                                          if (!_showFriendsPosts) {
                                             return authorUid == currentUser.uid;
                                           }
                                           return followingIds.contains(
@@ -418,9 +418,9 @@ class _MyFriendsScreenState extends State<MyFriendsScreen> {
                                       ],
                                     ),
                                     child: Text(
-                                      _showMyPosts
-                                          ? 'You have not created any posts yet.'
-                                          : 'No posts from the people you follow yet.',
+                                      _showFriendsPosts
+                                          ? 'No posts from the people you follow yet.'
+                                          : 'You have not created any posts yet.',
                                       style: TextStyle(
                                         color: isDark
                                             ? Colors.grey.shade300

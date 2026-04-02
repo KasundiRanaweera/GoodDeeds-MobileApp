@@ -4,124 +4,231 @@
 ![Firebase](https://img.shields.io/badge/Firebase-Enabled-FFCA28?logo=firebase&logoColor=white)
 ![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20iOS%20%7C%20Web-green?logo=google)
 
----
-
 ## Overview
 
-**GoodDeeds** is a Flutter app for organizing and participating in community service events. It features user authentication, role-based access (Volunteer/Organizer), event management, and impact tracking, all powered by Firebase.
+GoodDeeds is a Flutter + Firebase app for organizing and joining community service events. It includes role-based access (Volunteer and Organizer), attendance tracking, social engagement, and profile activity history.
 
----
+## Core Features
 
-## ✨ Features
-
-- User authentication (Firebase Auth)
-- Role management: Volunteer & Organizer
+- Firebase authentication (email/password)
+- Password reset flow using email recovery
+- Multi-role accounts (Volunteer, Organizer, or both)
 - Event creation, discovery, and participation
-- User profiles with editable info
-- Impact points and rewards system
-- Organizer attendance marking with strict 48-hour window from event start
-- Volunteer event status flow: Joined -> Pending -> Completed/Missed
-- Profile activity history updates after points are awarded
-- Organizer dashboard & event analytics
-- Community and profile screens
-- Firebase Firestore & Storage integration
+- Discover Events shows an `Expired` status badge for past events
+- Attendance check-in with a strict 48-hour window
+- Reward and impact points system
+- Public profile activity history with real-time likes
+- Community browsing and My Friends (following) management
+- Role-aware navigation and role-aware Firestore permissions
+
+## Role and Authentication Architecture
+
+### Multiple Roles System
+
+Users can hold both Volunteer and Organizer roles at the same time.
+
+- Roles are stored as `List<String>` in Firestore user documents.
+- User model helper methods: `isVolunteer`, `isOrganizer`, and `hasRole()`.
+- Navigation is determined by assigned roles:
+  - Both roles: Home screen role selector
+  - Organizer only: Organizer dashboard
+  - Volunteer only: Discover events
+
+### Firestore Organizer Validation
+
+Organizer checks support backward-compatible role formats:
+
+- `role: "Organizer"`
+- `roles: ["Organizer", ...]`
+- `isOrganizer: true`
+
+### Registration Data Writes
+
+During sign up, the app writes three documents for a new account:
+
+- `users/{uid}`: base account profile and role metadata
+- `user_profiles/{uid}`: editable profile fields
+- `user_lookup/{uid}`: searchable lookup record (`nameLower`, `emailLower`, role flags)
+
+This means Firestore rules must allow owner create/update for all three paths.
+
+## Password Reset
+
+Forgot Password flow:
+
+1. Tap Forgot Password on login.
+2. Enter email address.
+3. Tap Send Reset Link.
+4. Firebase sends a reset email.
+5. User resets password from email link.
+
+Implementation references:
+
+- Screen: [lib/screens/forgot_password_screen.dart](lib/screens/forgot_password_screen.dart)
+- Firebase auth usage: `sendPasswordResetEmail()`
+- Error handling includes invalid email, user not found, and rate-limited requests
+
+## Attendance and Participation Tracking
+
+- Managed in [lib/screens/organizer/participants_screen.dart](lib/screens/organizer/participants_screen.dart)
+- Event-level tracking in `events/{eventId}`:
+  - `checkedInIds`
+  - `awardedParticipantIds`
+- User-level mirrors in `users/{uid}`:
+  - `participationStatusByEvent.{eventId}`
+  - `attendanceVerifiedAtByEvent.{eventId}`
+- Attendance window is from event start until exactly 48 hours later.
+
+Volunteer status progression in My Events:
+
+- Joined
+- Pending
+- Completed
+- Missed
+
+## Social and Community Features
+
+### Public Activity Likes
+
+- Likes are stored in `events/{eventId}/likes/{uid}`
+- Each like stores `uid` and `createdAt`
+- Users can only write/delete their own likes
+- UI shows real-time like counts and avatars
+
+### Post Comments
+
+- Comments are stored in `posts/{postId}/comments/{commentId}`
+- Users can create comments as themselves only
+- Users can delete only their own comments
+- Comments open in a dedicated full-screen comments page
+- Comment list and counts update in real time
+- Success feedback is shown after add/delete actions
+
+### My Friends and Following
+
+- My Friends screen: [lib/screens/user/myfriends_screen.dart](lib/screens/user/myfriends_screen.dart)
+- Community screen: [lib/screens/user/community_screen.dart](lib/screens/user/community_screen.dart)
+- The user bottom navigation includes a My Friends tab across user flows.
+- Following list supports profile navigation and unfollow actions.
+
+## Main Screens
+
+| Screen | Widget/Class | File |
+|---|---|---|
+| Welcome | `WelcomeScreen` | `lib/screens/welcome_screen.dart` |
+| Login | `LoginScreen` | `lib/screens/login_screen.dart` |
+| Register | `RegisterScreen` | `lib/screens/register_screen.dart` |
+| Forgot Password | `ForgotPasswordScreen` | `lib/screens/forgot_password_screen.dart` |
+| Home | `HomeScreen` | `lib/screens/home_screen.dart` |
+| Discover Events | `DiscoverEventsScreen` | `lib/screens/user/discover_events_screen.dart` |
+| Event Details | `EventDetailsScreen` | `lib/screens/user/event_details_screen.dart` |
+| My Events | `MyEventsScreen` | `lib/screens/user/my_events_screen.dart` |
+| Community | `CommunityScreen` | `lib/screens/user/community_screen.dart` |
+| My Friends | `MyFriendsScreen` | `lib/screens/user/myfriends_screen.dart` |
+| User Profile | `UserProfileScreen` | `lib/screens/user/user_profile_screen.dart` |
+| Organizer Dashboard | `OrganizerDashboardScreen` | `lib/screens/organizer/organizer_dashboard_screen.dart` |
+| Create Event | `CreateEventScreen` | `lib/screens/organizer/create_event_screen.dart` |
+| Manage Event | `ManageEventScreen` | `lib/screens/organizer/manage_event_screen.dart` |
+| Participants | `ParticipantsScreen` | `lib/screens/organizer/participants_screen.dart` |
+
+## Screenshots
+
+### Welcome
+
+![Welcome Screen](docs/screenshots/welcome-screen.png)
+
+### Login
+
+![Login Screen](docs/screenshots/login-screen.png)
+
+### Discover Events
+
+![Discover Events Screen](docs/screenshots/discover-events-screen.png)
+
+### Community
+
+![Community Screen](docs/screenshots/community-screen.png)
+
+### My Friends
+
+![My Friends Screen](docs/screenshots/my-friends-screen.png)
+
+### My Profile
+
+![My Profile Screen](docs/screenshots/my-profile-screen.png)
+
+## Setup and Run
+
+1. Clone repository:
+
+```sh
+git clone https://github.com/yourusername/gooddeeds_app.git
+cd gooddeeds_app
+```
+
+2. Install dependencies:
+
+```sh
+flutter pub get
+```
+
+3. Configure Firebase:
+
+- Add `google-services.json` to Android app config.
+- Add `GoogleService-Info.plist` to iOS Runner config.
+- Ensure [lib/firebase_options.dart](lib/firebase_options.dart) is correct for your Firebase project.
+
+4. Run app:
+
+```sh
+flutter run
+```
+
+5. Deploy Firestore rules when needed:
+
+```sh
+firebase deploy --only firestore:rules
+```
+
+## Troubleshooting
+
+### Registration shows "permission-denied"
+
+If account creation succeeds in Firebase Auth but fails in Firestore, deploy the latest rules:
+
+```sh
+firebase deploy --only firestore:rules
+```
+
+Then verify your rules include owner create/update access for:
+
+- `users/{uid}`
+- `user_profiles/{uid}`
+- `user_lookup/{uid}`
+
+### Comments screen crashes when opening or posting
+
+Comments now run in a dedicated full-screen page with safer async handling and fallback UI, which avoids modal build-scope crashes.
+
+If you still see a crash:
+
+1. Check that the post document exists.
+2. Check that the signed-in user document exists in `users/{uid}`.
+3. Make sure Firestore rules allow reading `posts`, `comments`, and `users`.
+4. Re-run the app after clearing any old debug session.
+
+## Project Structure
+
+- `lib/models/` data models
+- `lib/screens/` UI flows
+- `lib/services/` Firebase/business logic
+- `lib/widgets/` reusable widgets
+- `lib/constants/` app-wide constants
+
+## Notes
+
+- Network images should use safe fallback patterns to avoid repeated runtime socket noise.
+- For complete Firestore and Storage rule references, see [FIREBASE_STORAGE_RULES.md](FIREBASE_STORAGE_RULES.md).
 
 ---
 
-
-## 🗂️ Main Screens & UI Widgets
-
-| Screen Name              | Widget/Class                | File Location                                               |
-|-------------------------|-----------------------------|-------------------------------------------------------------|
-| Welcome Screen           | `WelcomeScreen`             | `lib/screens/welcome_screen.dart`                           |
-| Home Screen              | `HomeScreen`                | `lib/screens/home_screen.dart`                              |
-| Discover Events          | `DiscoverEventsScreen`      | `lib/screens/user/discover_events_screen.dart`              |
-| Event Details            | `EventDetailsScreen`        | `lib/screens/user/event_details_screen.dart`                |
-| My Events                | `MyEventsScreen`            | `lib/screens/user/my_events_screen.dart`                    |
-| Create Event             | `CreateEventScreen`         | `lib/screens/organizer/create_event_screen.dart`            |
-| Manage Event             | `ManageEventScreen`         | `lib/screens/organizer/manage_event_screen.dart`            |
-| Participants             | `ParticipantsScreen`        | `lib/screens/organizer/participants_screen.dart`            |
-| User Profile             | `UserProfileScreen`         | `lib/screens/user/user_profile_screen.dart`                 |
-| Organizer Dashboard      | `OrganizerDashboardScreen`  | `lib/screens/organizer/organizer_dashboard_screen.dart`     |
-
-Each screen is implemented as a modern Flutter widget, using Material 3 design and responsive layouts. See the file locations above for the full UI code and customization options.
-
----
-
-## 🧩 Data Models
-
-### UserModel
-- `id`, `name`, `email`, `phone`
-- `roles`: [Volunteer, Organizer]
-- `impactPoints`, `createdAt`, `updatedAt`
-
-### EventModel
-- `id`, `title`, `description`, `location`, `category`
-- `impactPoints`, `eventDate`, `imageUrl`
-- `organizerName`, `participantsCount`, `participantIds`
-- `checkedInIds`, `awardedParticipantIds`, `status`
-- `createdAt`, `updatedAt`
-
----
-
-## ⚙️ Setup & Installation
-
-1. **Clone the repo:**
-	```sh
-	git clone https://github.com/yourusername/gooddeeds_app.git
-	cd gooddeeds_app
-	```
-2. **Install dependencies:**
-	```sh
-	flutter pub get
-	```
-3. **Firebase setup:**
-	- Add your `google-services.json` (Android) and `GoogleService-Info.plist` (iOS) to the respective folders.
-	- Update `firebase_options.dart` if needed.
-4. **Run the app:**
-	```sh
-	flutter run
-	```
-
-5. **Deploy Firestore rules (required for attendance permissions):**
-	```sh
-	firebase deploy --only firestore:rules
-	```
-
----
-
-## Attendance & Permission Rules (Latest)
-
-- Attendance marking window: from event start time up to exactly 48 hours after.
-- Organizer role is accepted from these user fields:
-	- `role: "Organizer"`
-	- `roles` list containing `Organizer`
-	- `isOrganizer: true`
-- Organizer accounts have full Firestore access in app collections (`users`, `user_profiles`, `events`).
-- Volunteer card status in My Events:
-	- `Joined` before event date
-	- `Pending` within the 48-hour attendance window if unmarked
-	- `Completed` when organizer marks attendance
-	- `Missed` after 48 hours if still unmarked
-- User profile activity history and events-attended count increase only after points are awarded (`awardedParticipantIds`).
-
-For full copy-paste security rule docs, see `FIREBASE_STORAGE_RULES.md`.
-
----
-
-## 📁 Project Structure
-
-- `lib/models/` — Data models (User, Event, etc.)
-- `lib/screens/` — UI screens (user & organizer flows)
-- `lib/services/` — Firebase and business logic
-- `lib/widgets/` — Reusable UI components
-- `lib/constants/` — App-wide constants
-
----
-
-## 📚 Resources
-- [Flutter Documentation](https://docs.flutter.dev/)
-- [Firebase for Flutter](https://firebase.flutter.dev/)
-- [Material Design](https://m3.material.io/)
-
----

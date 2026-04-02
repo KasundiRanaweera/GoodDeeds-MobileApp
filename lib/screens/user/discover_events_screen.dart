@@ -371,6 +371,8 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
                                 event['date'] ??
                                 event['startDate'],
                           );
+                          final isExpired =
+                              date != null && DateTime.now().isAfter(date);
                           final avatars = _avatarUrls(event);
                           final participants = _asInt(
                             event['participantsCount'] ??
@@ -587,20 +589,49 @@ class _DiscoverEventsScreenState extends State<DiscoverEventsScreen> {
                                                 : Colors.grey[600],
                                           ),
                                           const SizedBox(width: 6),
-                                          Expanded(
-                                            child: Text(
-                                              _formatDate(date),
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w500,
-                                                color: isDark
-                                                    ? Colors.grey[400]
-                                                    : Colors.grey[700],
-                                              ),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
+                                          isExpired
+                                              ? Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 4,
+                                                      ),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.red
+                                                        .withValues(
+                                                          alpha: 0.12,
+                                                        ),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          999,
+                                                        ),
+                                                  ),
+                                                  child: const Text(
+                                                    'Expired',
+                                                    style: TextStyle(
+                                                      fontSize: 11,
+                                                      fontWeight:
+                                                          FontWeight.w800,
+                                                      color: Colors.red,
+                                                    ),
+                                                  ),
+                                                )
+                                              : Expanded(
+                                                  child: Text(
+                                                    _formatDate(date),
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      fontWeight:
+                                                          FontWeight.w500,
+                                                      color: isDark
+                                                          ? Colors.grey[400]
+                                                          : Colors.grey[700],
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
+                                                ),
                                         ],
                                       ),
                                       const SizedBox(height: 8),

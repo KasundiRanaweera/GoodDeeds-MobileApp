@@ -6,12 +6,80 @@ class FirebaseService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   static const Set<String> _allowedRoles = {'Volunteer', 'Organizer'};
+  static const String _userLookupCollection = 'user_lookup';
 
   String _normalizeRole(String role) {
     final normalized = role.trim().toLowerCase();
     if (normalized == 'volunteer') return 'Volunteer';
     if (normalized == 'organizer') return 'Organizer';
     throw Exception('Role must be Volunteer or Organizer.');
+  }
+
+  Map<String, dynamic> _buildBaseUserDoc({
+    required String uid,
+    required String email,
+    required String name,
+    required String phone,
+    required String primaryRole,
+    bool includeCreatedAt = false,
+  }) {
+    final cleanName = name.trim();
+    final cleanEmail = email.trim();
+    final cleanPhone = phone.trim();
+    final roles = <String>[primaryRole];
+
+    final doc = <String, dynamic>{
+      'uid': uid,
+      'name': cleanName,
+      'email': cleanEmail,
+      'phone': cleanPhone,
+      'displayName': cleanName,
+      'emailLower': cleanEmail.toLowerCase(),
+      'nameLower': cleanName.toLowerCase(),
+      'role': primaryRole,
+      'roles': roles,
+      'isVolunteer': roles.contains('Volunteer'),
+      'isOrganizer': roles.contains('Organizer'),
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+
+    if (includeCreatedAt) {
+      doc['createdAt'] = FieldValue.serverTimestamp();
+    }
+
+    return doc;
+  }
+
+  Map<String, dynamic> _buildUserLookupDoc(Map<String, dynamic> baseUserDoc) {
+    return <String, dynamic>{
+      'uid': baseUserDoc['uid'],
+      'name': baseUserDoc['name'],
+      'displayName': baseUserDoc['displayName'],
+      'nameLower': baseUserDoc['nameLower'],
+      'email': baseUserDoc['email'],
+      'emailLower': baseUserDoc['emailLower'],
+      'role': baseUserDoc['role'],
+      'roles': baseUserDoc['roles'],
+      'isVolunteer': baseUserDoc['isVolunteer'],
+      'isOrganizer': baseUserDoc['isOrganizer'],
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+  }
+
+  Future<void> _upsertUserLookupDoc({
+    required String uid,
+    required Map<String, dynamic> baseUserDoc,
+    bool includeCreatedAt = false,
+  }) {
+    final lookupDoc = _buildUserLookupDoc(baseUserDoc);
+    if (includeCreatedAt) {
+      lookupDoc['createdAt'] = FieldValue.serverTimestamp();
+    }
+
+    return _firestore
+        .collection(_userLookupCollection)
+        .doc(uid)
+        .set(lookupDoc, SetOptions(merge: true));
   }
 
   // Get current user
@@ -40,28 +108,39 @@ class FirebaseService {
       // Update display name
       await userCredential.user?.updateDisplayName(name);
 
-      // Save additional user data to Firestore
-      await _firestore.collection('users').doc(userCredential.user!.uid).set({
-        'name': name,
-        'email': email,
-        'phone': phone,
-        'role': normalizedRole,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
+      final uid = userCredential.user!.uid;
+      final baseUserDoc = _buildBaseUserDoc(
+        uid: uid,
+        email: email,
+        name: name,
+        phone: phone,
+        primaryRole: normalizedRole,
+        includeCreatedAt: true,
+      );
+
+      // Save normalized base user data to Firestore.
+      await _firestore
+          .collection('users')
+          .doc(uid)
+          .set(baseUserDoc, SetOptions(merge: true));
+
+      // Write a small searchable index for fast lookup by name/email.
+      await _upsertUserLookupDoc(
+        uid: uid,
+        baseUserDoc: baseUserDoc,
+        includeCreatedAt: true,
+      );
 
       // Keep editable profile fields in a separate collection.
-      await _firestore
-          .collection('user_profiles')
-          .doc(userCredential.user!.uid)
-          .set({
-            'name': name,
-            'phone': phone,
-            'photoUrl': '',
-            'bio': '',
-            'address': '',
-            'createdAt': FieldValue.serverTimestamp(),
-            'updatedAt': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
+      await _firestore.collection('user_profiles').doc(uid).set({
+        'name': name,
+        'phone': phone,
+        'photoUrl': '',
+        'bio': '',
+        'address': '',
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
 
       return userCredential;
     } catch (e, st) {
@@ -92,6 +171,17 @@ class FirebaseService {
   // Sign out
   Future<void> signOut() async {
     await _auth.signOut();
+  }
+
+  // Send password reset email
+  Future<void> sendPasswordResetEmail(String email) async {
+    try {
+      await _auth.sendPasswordResetEmail(email: email);
+    } on FirebaseAuthException {
+      rethrow;
+    } catch (e) {
+      throw Exception('Failed to send password reset email: $e');
+    }
   }
 
   // Get user data from Firestore
@@ -141,10 +231,57 @@ class FirebaseService {
     }
 
     final normalizedRole = _normalizeRole(role);
-    await _firestore.collection('users').doc(user.uid).set({
-      'role': normalizedRole,
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    final userDoc = await _firestore.collection('users').doc(user.uid).get();
+    final data = userDoc.data() ?? const <String, dynamic>{};
+    final baseUserDoc = _buildBaseUserDoc(
+      uid: user.uid,
+      email: (data['email'] ?? user.email ?? '').toString(),
+      name: (data['name'] ?? user.displayName ?? '').toString(),
+      phone: (data['phone'] ?? '').toString(),
+      primaryRole: normalizedRole,
+    );
+
+    await _firestore
+        .collection('users')
+        .doc(user.uid)
+        .set(baseUserDoc, SetOptions(merge: true));
+
+    await _upsertUserLookupDoc(uid: user.uid, baseUserDoc: baseUserDoc);
+  }
+
+  // Query user lookup index by name/email prefix (lowercase input recommended).
+  Future<List<Map<String, dynamic>>> searchUsersForLookup(
+    String query, {
+    int limit = 20,
+  }) async {
+    final term = query.trim().toLowerCase();
+    if (term.isEmpty) return const [];
+
+    final byName = await _firestore
+        .collection(_userLookupCollection)
+        .orderBy('nameLower')
+        .startAt([term])
+        .endAt(['$term\uf8ff'])
+        .limit(limit)
+        .get();
+
+    final byEmail = await _firestore
+        .collection(_userLookupCollection)
+        .orderBy('emailLower')
+        .startAt([term])
+        .endAt(['$term\uf8ff'])
+        .limit(limit)
+        .get();
+
+    final merged = <String, Map<String, dynamic>>{};
+    for (final doc in byName.docs) {
+      merged[doc.id] = {'id': doc.id, ...doc.data()};
+    }
+    for (final doc in byEmail.docs) {
+      merged[doc.id] = {'id': doc.id, ...doc.data()};
+    }
+
+    return merged.values.toList();
   }
 
   // Stream organizer-created events for volunteer discovery.

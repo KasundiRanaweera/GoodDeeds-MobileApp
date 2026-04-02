@@ -166,6 +166,13 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /user_lookup/{userId} {
+      // Anyone can read lightweight lookup docs.
+      allow read: if true;
+      allow create, update: if isOwner(userId) || isOrganizer();
+      allow delete: if false;
+    }
+
     match /posts/{postId} {
       // Anyone can read public posts.
       allow read: if true;
