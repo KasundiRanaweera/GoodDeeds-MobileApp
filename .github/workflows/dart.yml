@@ -1,16 +1,16 @@
-name: Dart CI
+name: Flutter CI
 
 on:
   push:
     branches: [ main ]
 
 jobs:
-  analyze:
+  build:
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v3
-      - uses: dart-lang/setup-dart@v1
+      - uses: subosito/flutter-action@v2
 
-      - run: dart pub get
-      - run: dart analyze
+      - run: flutter pub get
+      - run: flutter analyze
